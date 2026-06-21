@@ -16,7 +16,6 @@
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
-    "canvas": "^2.11.2",
     "nodemon": "^3.1.0"
   }
 }
