@@ -571,7 +571,7 @@ function drawStudyCard() {
             <div class="card-front absolute inset-0 bg-surface rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer shadow-xl select-none">
               <div class="prose-content text-white text-xl text-center leading-relaxed">${md(card.front)}</div>
               <p class="text-slate-600 text-xs mt-4">tap to reveal</p>
-              <button onclick="event.stopPropagation(); speak(${JSON.stringify(card.front)})"
+              <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(card.front))})"
                 class="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center text-slate-600 hover:text-slate-300 transition-colors"
                 title="Replay">
                 ${speakerOnSVG}
@@ -584,7 +584,7 @@ function drawStudyCard() {
                 <div class="mt-3 pt-3 border-t border-indigo-800/40 w-full">
                   <div class="prose-content text-indigo-200/80 text-sm text-center italic leading-relaxed">${md(card.example)}</div>
                 </div>` : ''}
-              <button onclick="event.stopPropagation(); speak(${JSON.stringify(backSpeak)})"
+              <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(backSpeak))})"
                 class="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center text-indigo-400/40 hover:text-indigo-300 transition-colors"
                 title="Replay">
                 ${speakerOnSVG}
@@ -762,7 +762,7 @@ async function renderEditCard(app, cardId, deckId) {
         <div class="flex gap-3 pt-2 pb-4">
           <button onclick="navigate('${backHash}')"
             class="flex-1 h-12 border border-slate-700 rounded-xl text-slate-400 hover:text-white transition-colors">Cancel</button>
-          <button id="save-btn" onclick="saveCard(${JSON.stringify(cardId || '')}, ${JSON.stringify(deckId || '')})"
+          <button id="save-btn" onclick="saveCard(${escHtml(JSON.stringify(cardId || ''))}, ${escHtml(JSON.stringify(deckId || ''))})"
             class="flex-1 h-12 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-semibold transition-colors">Save</button>
         </div>
       </div>
@@ -1063,7 +1063,7 @@ async function renderJournalEntry(app, entryId) {
         <div class="flex gap-3 pt-2 pb-4">
           <button onclick="navigate('#/journal')"
             class="flex-1 h-12 border border-slate-700 rounded-xl text-slate-400 hover:text-white transition-colors">Cancel</button>
-          <button id="save-journal-btn" onclick="saveJournal(${JSON.stringify(entryId || '')})"
+          <button id="save-journal-btn" onclick="saveJournal(${escHtml(JSON.stringify(entryId || ''))})"
             class="flex-1 h-12 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-semibold transition-colors">Save</button>
         </div>
       </div>
