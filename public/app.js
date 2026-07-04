@@ -138,6 +138,18 @@ function router() {
     setActiveNav('');
     const params = new URLSearchParams(hash.split('?')[1] || '');
     renderEditCard(app, m[1], params.get('deck'));
+  } else if (hash === '#/journal') {
+    setActiveNav('journal');
+    renderJournal(app);
+  } else if ((m = hash.match(/^#\/journal\/new/))) {
+    setActiveNav('journal');
+    renderJournalEntry(app, null);
+  } else if ((m = hash.match(/^#\/journal\/(\d+)\/edit/))) {
+    setActiveNav('journal');
+    renderJournalEntry(app, m[1]);
+  } else if (hash === '#/recap') {
+    setActiveNav('');
+    renderRecap(app);
   } else if (hash === '#/stats') {
     setActiveNav('stats');
     renderStats(app);
@@ -174,10 +186,11 @@ function loading(app) {
 ════════════════════════════════════════ */
 async function renderHome(app) {
   loading(app);
-  const decks = await api('/api/decks');
+  const [decks, recap] = await Promise.all([api('/api/decks'), api('/api/recap')]);
   if (!decks) return;
 
   const totalDue = decks.reduce((s, d) => s + (d.due_count || 0), 0);
+  const hasRecap = recap && (recap.new_word_count || recap.reviews_done || recap.journal_count);
 
   app.innerHTML = `
     <div class="p-4 pt-6">
@@ -189,6 +202,24 @@ async function renderHome(app) {
             Study All (${totalDue})
           </button>` : ''}
       </div>
+
+      ${hasRecap ? `
+        <div onclick="navigate('#/recap')"
+          class="bg-gradient-to-r from-indigo-600/20 to-indigo-500/10 border border-indigo-700/40 rounded-2xl p-4 mb-5 cursor-pointer active:scale-[0.99] transition-transform">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-1">This week</p>
+              <p class="text-sm text-slate-200">
+                <span class="font-bold text-white">${recap.new_word_count}</span> new words ·
+                <span class="font-bold text-white">${recap.reviews_done}</span> reviews ·
+                <span class="font-bold text-white">${recap.journal_count}</span> journal
+              </p>
+            </div>
+            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </div>
+        </div>` : ''}
 
       ${decks.length === 0 ? `
         <div class="text-center py-20 text-slate-500">
@@ -509,6 +540,8 @@ function drawStudyCard() {
   const total = cards.length;
   const progress = Math.round((index / total) * 100);
   const backHash = deckId === 'all' ? '#/' : `#/decks/${deckId}`;
+  const badge = typeBadge(card.type);
+  const backSpeak = card.example ? `${card.back}. ${card.example}` : card.back;
 
   app.innerHTML = `
     <div class="flex flex-col min-h-screen p-4 pt-5">
@@ -544,9 +577,14 @@ function drawStudyCard() {
                 ${speakerOnSVG}
               </button>
             </div>
-            <div class="card-back absolute inset-0 bg-indigo-950/60 border border-indigo-800/40 rounded-2xl p-6 flex items-center justify-center cursor-pointer shadow-xl select-none">
+            <div class="card-back absolute inset-0 bg-indigo-950/60 border border-indigo-800/40 rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer shadow-xl select-none overflow-y-auto">
+              ${badge ? `<div class="mb-2">${badge}</div>` : ''}
               <div class="prose-content text-white text-lg text-center leading-relaxed">${md(card.back)}</div>
-              <button onclick="event.stopPropagation(); speak(${JSON.stringify(card.back)})"
+              ${card.example ? `
+                <div class="mt-3 pt-3 border-t border-indigo-800/40 w-full">
+                  <div class="prose-content text-indigo-200/80 text-sm text-center italic leading-relaxed">${md(card.example)}</div>
+                </div>` : ''}
+              <button onclick="event.stopPropagation(); speak(${JSON.stringify(backSpeak)})"
                 class="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center text-indigo-400/40 hover:text-indigo-300 transition-colors"
                 title="Replay">
                 ${speakerOnSVG}
@@ -590,7 +628,20 @@ function flipCard() {
   study.flipped = true;
   document.getElementById('card-inner')?.classList.add('flipped');
   document.getElementById('rating-btns')?.classList.remove('invisible');
-  speak(study.cards[study.index].back);
+  const c = study.cards[study.index];
+  speak(c.example ? `${c.back}. ${c.example}` : c.back);
+}
+
+/* Small pill showing the card's chunk type (hidden for plain vocab) */
+function typeBadge(type) {
+  const labels = {
+    collocation: 'Collocation',
+    phrasal: 'Phrasal verb',
+    idiom: 'Idiom',
+    sentence: 'Sentence',
+  };
+  if (!labels[type]) return '';
+  return `<span class="inline-block bg-indigo-500/20 text-indigo-300 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full">${labels[type]}</span>`;
 }
 
 async function rate(rating) {
@@ -649,7 +700,16 @@ async function renderEditCard(app, cardId, deckId) {
   const isNew = !cardId;
   const front = card?.front || '';
   const back = card?.back || '';
+  const example = card?.example || '';
+  const cardType = card?.type || 'vocab';
   const backHash = deckId ? `#/decks/${deckId}` : '#/';
+  const typeOpts = [
+    ['vocab', 'Vocabulary'],
+    ['collocation', 'Collocation'],
+    ['phrasal', 'Phrasal verb'],
+    ['idiom', 'Idiom'],
+    ['sentence', 'Sentence'],
+  ];
 
   app.innerHTML = `
     <div class="p-4 pt-6">
@@ -682,6 +742,23 @@ async function renderEditCard(app, cardId, deckId) {
           </div>
         </div>
 
+        <div>
+          <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Example / chunk in context</label>
+          <textarea id="edit-example" rows="2" placeholder="e.g. leverage our existing data to improve UX"
+            class="w-full bg-surface border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 resize-none">${escHtml(example)}</textarea>
+          <div class="mt-2 p-3 bg-base rounded-xl text-slate-300 text-sm italic prose-content min-h-10" id="preview-example">
+            ${example ? md(example) : '<span class="text-slate-600">Preview...</span>'}
+          </div>
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Type</label>
+          <select id="edit-type"
+            class="w-full h-12 bg-surface border border-slate-700 rounded-xl px-4 text-white focus:outline-none focus:border-indigo-500">
+            ${typeOpts.map(([v, l]) => `<option value="${v}"${v === cardType ? ' selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </div>
+
         <div class="flex gap-3 pt-2 pb-4">
           <button onclick="navigate('${backHash}')"
             class="flex-1 h-12 border border-slate-700 rounded-xl text-slate-400 hover:text-white transition-colors">Cancel</button>
@@ -700,21 +777,25 @@ async function renderEditCard(app, cardId, deckId) {
   };
   updatePreview('edit-front', 'preview-front');
   updatePreview('edit-back', 'preview-back');
+  updatePreview('edit-example', 'preview-example');
 }
 
 async function saveCard(cardId, deckId) {
   const front = document.getElementById('edit-front').value.trim();
   const back = document.getElementById('edit-back').value.trim();
+  const example = document.getElementById('edit-example').value.trim();
+  const type = document.getElementById('edit-type').value;
   if (!front || !back) { alert('Both front and back are required.'); return; }
 
   const btn = document.getElementById('save-btn');
   btn.disabled = true;
   btn.textContent = 'Saving...';
 
+  const payload = JSON.stringify({ front, back, example, type });
   if (cardId) {
-    await api(`/api/cards/${cardId}`, { method: 'PUT', body: JSON.stringify({ front, back }) });
+    await api(`/api/cards/${cardId}`, { method: 'PUT', body: payload });
   } else {
-    await api(`/api/decks/${deckId}/cards`, { method: 'POST', body: JSON.stringify({ front, back }) });
+    await api(`/api/decks/${deckId}/cards`, { method: 'POST', body: payload });
   }
   navigate(deckId ? `#/decks/${deckId}` : '#/');
 }
@@ -724,8 +805,15 @@ async function saveCard(cardId, deckId) {
 ════════════════════════════════════════ */
 async function renderStats(app) {
   loading(app);
-  const [stats, weekly] = await Promise.all([api('/api/stats'), api('/api/stats/weekly')]);
+  const [stats, weekly, growth, heatmap] = await Promise.all([
+    api('/api/stats'),
+    api('/api/stats/weekly'),
+    api('/api/stats/vocab-growth?days=90'),
+    api('/api/stats/heatmap?weeks=12'),
+  ]);
   if (!stats) return;
+
+  const maturePct = stats.total_cards ? Math.round((stats.mature_cards / stats.total_cards) * 100) : 0;
 
   app.innerHTML = `
     <div class="p-4 pt-6">
@@ -738,16 +826,27 @@ async function renderStats(app) {
         </div>
         <div class="bg-surface rounded-2xl p-4">
           <div class="text-3xl font-bold text-white mb-1">${stats.total_cards}</div>
-          <div class="text-sm text-slate-400">Total Cards</div>
+          <div class="text-sm text-slate-400">Total Words</div>
         </div>
         <div class="bg-surface rounded-2xl p-4">
           <div class="text-3xl font-bold text-orange-400 mb-1">${stats.streak_days} 🔥</div>
           <div class="text-sm text-slate-400">Day Streak</div>
         </div>
         <div class="bg-surface rounded-2xl p-4">
-          <div class="text-3xl font-bold text-green-400 mb-1">${stats.reviewed_today}</div>
-          <div class="text-sm text-slate-400">Reviewed Today</div>
+          <div class="text-3xl font-bold text-green-400 mb-1">${stats.mature_cards}</div>
+          <div class="text-sm text-slate-400">Mature <span class="text-slate-600">(${maturePct}%)</span></div>
         </div>
+      </div>
+
+      <div class="bg-surface rounded-2xl p-4 mb-5">
+        <h2 class="text-sm font-semibold text-slate-400 mb-1">Vocabulary Growth</h2>
+        <p class="text-xs text-slate-600 mb-3">Total words known — last 90 days</p>
+        <div id="growth-chart"></div>
+      </div>
+
+      <div class="bg-surface rounded-2xl p-4 mb-5">
+        <h2 class="text-sm font-semibold text-slate-400 mb-3">Activity — Last 12 Weeks</h2>
+        <div id="heatmap"></div>
       </div>
 
       <div class="bg-surface rounded-2xl p-4">
@@ -757,7 +856,77 @@ async function renderStats(app) {
     </div>
   `;
 
+  if (growth) renderGrowthChart(growth);
+  if (heatmap) renderHeatmap(heatmap);
   if (weekly) renderWeeklyChart(weekly);
+}
+
+function renderGrowthChart(data) {
+  const el = document.getElementById('growth-chart');
+  if (!el) return;
+  if (!data || data.length === 0 || data[data.length - 1].total === 0) {
+    el.innerHTML = '<p class="text-slate-600 text-sm text-center py-4">No words yet</p>';
+    return;
+  }
+
+  const W = 300, H = 120, pad = 6;
+  const max = Math.max(...data.map(d => d.total), 1);
+  const min = Math.min(...data.map(d => d.total), 0);
+  const range = Math.max(1, max - min);
+  const stepX = (W - pad * 2) / Math.max(1, data.length - 1);
+  const pts = data.map((d, i) => {
+    const x = pad + i * stepX;
+    const y = H - pad - ((d.total - min) / range) * (H - pad * 2);
+    return [x, y];
+  });
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const area = `${line} L${pts[pts.length - 1][0].toFixed(1)},${H - pad} L${pad},${H - pad} Z`;
+
+  el.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" class="w-full">
+      <defs>
+        <linearGradient id="growthGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#6366f1" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="${area}" fill="url(#growthGrad)"/>
+      <path d="${line}" fill="none" stroke="#6366f1" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${pts[pts.length - 1][0].toFixed(1)}" cy="${pts[pts.length - 1][1].toFixed(1)}" r="3.5" fill="#818cf8"/>
+      <text x="${pad}" y="12" fill="#475569" font-size="9" font-family="sans-serif">${min}</text>
+      <text x="${(W - pad).toFixed(0)}" y="12" text-anchor="end" fill="#94a3b8" font-size="10" font-family="sans-serif" font-weight="bold">${max} words</text>
+    </svg>`;
+}
+
+function renderHeatmap(data) {
+  const el = document.getElementById('heatmap');
+  if (!el) return;
+  const max = Math.max(...data.map(d => d.count), 1);
+  const weeks = Math.ceil(data.length / 7);
+  const cell = 13, gap = 3, topPad = 4;
+  const W = weeks * (cell + gap);
+  const H = 7 * (cell + gap) + topPad;
+
+  const shade = c => {
+    if (!c) return '#1e293b';
+    const t = c / max;
+    if (t > 0.66) return '#6366f1';
+    if (t > 0.33) return '#4f46e5';
+    return '#3730a3';
+  };
+
+  // data[0] is oldest; align first column's weekday offset
+  const firstDay = new Date(data[0].day + 'T12:00:00').getDay();
+  const rects = data.map((d, i) => {
+    const idx = i + firstDay;
+    const col = Math.floor(idx / 7);
+    const row = idx % 7;
+    const x = col * (cell + gap);
+    const y = topPad + row * (cell + gap);
+    return `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2.5" fill="${shade(d.count)}"><title>${d.day}: ${d.count}</title></rect>`;
+  }).join('');
+
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full" style="max-width:${W}px">${rects}</svg>`;
 }
 
 function renderWeeklyChart(data) {
@@ -787,4 +956,209 @@ function renderWeeklyChart(data) {
   }).join('');
 
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full">${bars}</svg>`;
+}
+
+/* ── Date helper (created_at stored as unix SECONDS) ── */
+function fmtDate(sec) {
+  const d = new Date(sec * 1000);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const yest = new Date(today); yest.setDate(yest.getDate() - 1);
+  const dOnly = new Date(d); dOnly.setHours(0, 0, 0, 0);
+  if (dOnly.getTime() === today.getTime()) return 'Today';
+  if (dOnly.getTime() === yest.getTime()) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+}
+
+/* ════════════════════════════════════════
+   Screen: Writing Journal
+════════════════════════════════════════ */
+async function renderJournal(app) {
+  loading(app);
+  const entries = await api('/api/journal');
+  if (!entries) return;
+
+  app.innerHTML = `
+    <div class="p-4 pt-6">
+      <div class="flex items-center justify-between mb-1">
+        <h1 class="text-2xl font-bold text-white">Journal</h1>
+        <button onclick="navigate('#/journal/new')"
+          class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 h-10 rounded-xl text-sm font-semibold transition-colors">
+          + New Entry
+        </button>
+      </div>
+      <p class="text-sm text-slate-400 mb-6">Write with your new words. Paste ChatGPT's correction to keep a record.</p>
+
+      ${entries.length === 0 ? `
+        <div class="text-center py-16 text-slate-500">
+          <div class="text-5xl mb-4">✍️</div>
+          <p class="text-lg font-medium text-slate-400">No entries yet</p>
+          <p class="text-sm mt-1">Write a few sentences using this week's words</p>
+        </div>` : `
+        <div class="space-y-3">
+          ${entries.map(e => `
+            <div onclick="navigate('#/journal/${e.id}/edit')"
+              class="bg-surface rounded-2xl p-4 cursor-pointer active:scale-[0.99] transition-transform">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-indigo-400 uppercase tracking-wider">${fmtDate(e.created_at)}</span>
+                ${e.correction ? '<span class="text-[10px] text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full">corrected</span>' : '<span class="text-[10px] text-slate-500 bg-slate-500/10 px-2 py-0.5 rounded-full">draft</span>'}
+              </div>
+              <p class="text-slate-200 text-sm line-clamp-3 whitespace-pre-wrap">${escHtml(e.content).slice(0, 240)}</p>
+              ${e.words ? `<p class="text-xs text-slate-500 mt-2">words: ${escHtml(e.words)}</p>` : ''}
+            </div>`).join('')}
+        </div>`}
+    </div>
+  `;
+}
+
+async function renderJournalEntry(app, entryId) {
+  loading(app);
+  let entry = null;
+  if (entryId) {
+    entry = await api(`/api/journal/${entryId}`);
+    if (!entry) { navigate('#/journal'); return; }
+  }
+
+  const isNew = !entryId;
+  const content = entry?.content || '';
+  const correction = entry?.correction || '';
+  const words = entry?.words || '';
+
+  app.innerHTML = `
+    <div class="p-4 pt-6">
+      <div class="flex items-center gap-2 mb-6">
+        <button onclick="navigate('#/journal')"
+          class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white transition-colors -ml-2">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </button>
+        <h1 class="text-xl font-bold text-white flex-1">${isNew ? 'New Entry' : 'Edit Entry'}</h1>
+        ${!isNew ? `<button onclick="deleteJournalEntry(${entryId})"
+          class="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-red-400 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+        </button>` : ''}
+      </div>
+
+      <div class="space-y-5">
+        <div>
+          <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Your writing</label>
+          <textarea id="journal-content" rows="7" placeholder="Write a few sentences using the words you're learning..."
+            class="w-full bg-surface border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 resize-none">${escHtml(content)}</textarea>
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">ChatGPT correction <span class="text-slate-600 normal-case font-normal">(optional — paste later)</span></label>
+          <textarea id="journal-correction" rows="7" placeholder="Paste the corrected version + feedback here"
+            class="w-full bg-surface border border-slate-700 rounded-xl px-4 py-3 text-green-200/90 focus:outline-none focus:border-green-600 resize-none">${escHtml(correction)}</textarea>
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Words practiced <span class="text-slate-600 normal-case font-normal">(optional)</span></label>
+          <input id="journal-words" type="text" value="${escHtml(words)}" placeholder="leverage, iterate, pivot"
+            class="w-full bg-surface border border-slate-700 rounded-xl px-4 h-12 text-white focus:outline-none focus:border-indigo-500"/>
+        </div>
+
+        <div class="flex gap-3 pt-2 pb-4">
+          <button onclick="navigate('#/journal')"
+            class="flex-1 h-12 border border-slate-700 rounded-xl text-slate-400 hover:text-white transition-colors">Cancel</button>
+          <button id="save-journal-btn" onclick="saveJournal(${JSON.stringify(entryId || '')})"
+            class="flex-1 h-12 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-semibold transition-colors">Save</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function saveJournal(entryId) {
+  const content = document.getElementById('journal-content').value.trim();
+  const correction = document.getElementById('journal-correction').value.trim();
+  const words = document.getElementById('journal-words').value.trim();
+  if (!content) { alert('Write something first.'); return; }
+
+  const btn = document.getElementById('save-journal-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  const payload = JSON.stringify({ content, correction, words });
+  if (entryId) {
+    await api(`/api/journal/${entryId}`, { method: 'PUT', body: payload });
+  } else {
+    await api('/api/journal', { method: 'POST', body: payload });
+  }
+  navigate('#/journal');
+}
+
+async function deleteJournalEntry(entryId) {
+  if (!confirm('Delete this entry?')) return;
+  await api(`/api/journal/${entryId}`, { method: 'DELETE' });
+  navigate('#/journal');
+}
+
+/* ════════════════════════════════════════
+   Screen: This Week recap
+════════════════════════════════════════ */
+async function renderRecap(app) {
+  loading(app);
+  const recap = await api('/api/recap');
+  if (!recap) return;
+
+  app.innerHTML = `
+    <div class="p-4 pt-6">
+      <div class="flex items-center gap-2 mb-6">
+        <button onclick="navigate('#/')"
+          class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white transition-colors -ml-2">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </button>
+        <h1 class="text-xl font-bold text-white">This Week</h1>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3 mb-6">
+        <div class="bg-surface rounded-2xl p-4 text-center">
+          <div class="text-2xl font-bold text-indigo-400">${recap.new_word_count}</div>
+          <div class="text-xs text-slate-400 mt-1">New words</div>
+        </div>
+        <div class="bg-surface rounded-2xl p-4 text-center">
+          <div class="text-2xl font-bold text-green-400">${recap.reviews_done}</div>
+          <div class="text-xs text-slate-400 mt-1">Reviews</div>
+        </div>
+        <div class="bg-surface rounded-2xl p-4 text-center">
+          <div class="text-2xl font-bold text-orange-400">${recap.journal_count}</div>
+          <div class="text-xs text-slate-400 mt-1">Journal</div>
+        </div>
+      </div>
+
+      <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">New words this week</h2>
+      ${recap.new_words.length === 0 ? `
+        <p class="text-slate-600 text-sm mb-6">No new words added this week.</p>` : `
+        <div class="space-y-2 mb-6">
+          ${recap.new_words.map(w => `
+            <div class="bg-surface rounded-xl p-3 flex items-center justify-between">
+              <span class="text-white text-sm font-medium">${escHtml(w.front)}</span>
+              <div class="flex items-center gap-2">
+                ${typeBadge(w.type)}
+                <span class="text-xs text-slate-500">${fmtDate(w.created_at)}</span>
+              </div>
+            </div>`).join('')}
+        </div>`}
+
+      <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Journal this week</h2>
+      ${recap.journal_entries.length === 0 ? `
+        <p class="text-slate-600 text-sm">No journal entries this week.</p>` : `
+        <div class="space-y-2">
+          ${recap.journal_entries.map(e => `
+            <div onclick="navigate('#/journal/${e.id}/edit')"
+              class="bg-surface rounded-xl p-3 cursor-pointer active:scale-[0.99] transition-transform">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs text-indigo-400">${fmtDate(e.created_at)}</span>
+                ${e.correction ? '<span class="text-[10px] text-green-400">✓ corrected</span>' : ''}
+              </div>
+              <p class="text-slate-300 text-sm line-clamp-2 whitespace-pre-wrap">${escHtml(e.content).slice(0, 160)}</p>
+            </div>`).join('')}
+        </div>`}
+    </div>
+  `;
 }

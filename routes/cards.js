@@ -8,21 +8,26 @@ router.get('/decks/:id/cards', (req, res) => {
   res.json(cards);
 });
 
+const CARD_TYPES = ['vocab', 'collocation', 'phrasal', 'idiom', 'sentence'];
+const normType = t => CARD_TYPES.includes(t) ? t : 'vocab';
+
 router.post('/decks/:id/cards', (req, res) => {
-  const { front, back } = req.body;
+  const { front, back, example = '', type = 'vocab' } = req.body;
   if (!front || !back) return res.status(400).json({ error: 'Front and back required' });
-  const result = db.prepare('INSERT INTO cards (deck_id, front, back) VALUES (?, ?, ?)').run(req.params.id, front, back);
-  res.status(201).json({ id: result.lastInsertRowid, deck_id: Number(req.params.id), front, back });
+  const result = db.prepare(
+    'INSERT INTO cards (deck_id, front, back, example, type) VALUES (?, ?, ?, ?, ?)'
+  ).run(req.params.id, front, back, example, normType(type));
+  res.status(201).json({ id: result.lastInsertRowid, deck_id: Number(req.params.id), front, back, example, type: normType(type) });
 });
 
 router.put('/cards/:id', (req, res) => {
-  const { front, back } = req.body;
+  const { front, back, example = '', type = 'vocab' } = req.body;
   if (!front || !back) return res.status(400).json({ error: 'Front and back required' });
   const result = db.prepare(
-    'UPDATE cards SET front = ?, back = ?, updated_at = unixepoch() WHERE id = ?'
-  ).run(front, back, req.params.id);
+    'UPDATE cards SET front = ?, back = ?, example = ?, type = ?, updated_at = unixepoch() WHERE id = ?'
+  ).run(front, back, example, normType(type), req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Card not found' });
-  res.json({ id: Number(req.params.id), front, back });
+  res.json({ id: Number(req.params.id), front, back, example, type: normType(type) });
 });
 
 router.delete('/cards/:id', (req, res) => {
@@ -34,14 +39,17 @@ router.delete('/cards/:id', (req, res) => {
 router.post('/decks/:id/import', (req, res) => {
   const text = typeof req.body === 'string' ? req.body : '';
   const lines = text.split('\n').filter(l => l.includes('|'));
-  const insert = db.prepare('INSERT INTO cards (deck_id, front, back) VALUES (?, ?, ?)');
+  const insert = db.prepare('INSERT INTO cards (deck_id, front, back, example) VALUES (?, ?, ?, ?)');
   const insertMany = db.transaction((lines) => {
     let count = 0;
     for (const line of lines) {
-      const [front, ...rest] = line.split('|');
-      const back = rest.join('|').trim();
-      if (front.trim() && back) {
-        insert.run(req.params.id, front.trim(), back);
+      // format: front | back  [| example]
+      const parts = line.split('|');
+      const front = (parts[0] || '').trim();
+      const back = (parts[1] || '').trim();
+      const example = parts.slice(2).join('|').trim();
+      if (front && back) {
+        insert.run(req.params.id, front, back, example);
         count++;
       }
     }
