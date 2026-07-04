@@ -12,6 +12,24 @@ const speakerOffSVG = `<svg class="w-5 h-5" fill="none" stroke="currentColor" vi
 
 let ttsEnabled = localStorage.getItem('fc_tts') !== 'false'; // default ON
 
+const TTS_MODES = ['both', 'front', 'back']; // cycle order
+let ttsMode = TTS_MODES.includes(localStorage.getItem('fc_tts_mode')) ? localStorage.getItem('fc_tts_mode') : 'both';
+
+function cycleTTSMode() {
+  const i = TTS_MODES.indexOf(ttsMode);
+  ttsMode = TTS_MODES[(i + 1) % TTS_MODES.length];
+  localStorage.setItem('fc_tts_mode', ttsMode);
+  updateTTSModeButton();
+}
+
+function updateTTSModeButton() {
+  const btn = document.getElementById('tts-mode-btn');
+  if (!btn) return;
+  const labels = { both: 'Front + Back', front: 'Front only', back: 'Back only' };
+  btn.textContent = labels[ttsMode];
+  btn.title = 'Tap to change what gets spoken';
+}
+
 function stripHtml(html) {
   const tmp = document.createElement('div');
   tmp.innerHTML = html;
@@ -564,6 +582,15 @@ function drawStudyCard() {
         </button>
       </div>
 
+      ${ttsEnabled ? `
+        <div class="flex justify-end -mt-3 mb-3">
+          <button id="tts-mode-btn" onclick="cycleTTSMode()"
+            class="text-xs text-indigo-400/80 hover:text-indigo-300 bg-indigo-500/10 px-3 py-1 rounded-full transition-colors"
+            title="Tap to change what gets spoken">
+            ${{ both: 'Front + Back', front: 'Front only', back: 'Back only' }[ttsMode]}
+          </button>
+        </div>` : ''}
+
       <!-- Card -->
       <div class="flex-1 flex items-center justify-center">
         <div class="card-scene w-full" style="height:260px" id="card-scene" onclick="flipCard()">
@@ -620,7 +647,7 @@ function drawStudyCard() {
   `;
 
   setupSwipe();
-  speak(card.front);
+  if (ttsMode === 'both' || ttsMode === 'front') speak(card.front);
 }
 
 function flipCard() {
@@ -628,6 +655,7 @@ function flipCard() {
   study.flipped = true;
   document.getElementById('card-inner')?.classList.add('flipped');
   document.getElementById('rating-btns')?.classList.remove('invisible');
+  if (ttsMode !== 'both' && ttsMode !== 'back') return;
   const c = study.cards[study.index];
   speak(c.example ? `${c.back}. ${c.example}` : c.back);
 }
