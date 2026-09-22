@@ -704,13 +704,17 @@ function drawStudyCard() {
 }
 
 function flipCard() {
-  if (!study || study.flipped) return;
-  study.flipped = true;
-  document.getElementById('card-inner')?.classList.add('flipped');
-  document.getElementById('rating-btns')?.classList.remove('invisible');
-  if (ttsMode !== 'both' && ttsMode !== 'back') return;
+  if (!study) return;
+  study.flipped = !study.flipped;
+  document.getElementById('card-inner')?.classList.toggle('flipped', study.flipped);
+  document.getElementById('rating-btns')?.classList.toggle('invisible', !study.flipped);
+
   const c = study.cards[study.index];
-  speak(c.example ? `${c.back}. ${c.example}` : c.back);
+  if (study.flipped) {
+    if (ttsMode === 'both' || ttsMode === 'back') speak(c.example ? `${c.back}. ${c.example}` : c.back);
+  } else {
+    if (ttsMode === 'both' || ttsMode === 'front') speak(c.front);
+  }
 }
 
 /* Small pill showing the card's chunk type (hidden for plain vocab) */
