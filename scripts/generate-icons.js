@@ -98,7 +98,7 @@ function makePNG(size, bgColor, fgColor) {
 const iconsDir = path.join(__dirname, '../public/icons');
 if (!fs.existsSync(iconsDir)) fs.mkdirSync(iconsDir, { recursive: true });
 
-const bg = [0x63, 0x66, 0xf1]; // #6366f1 indigo
+const bg = [0xc2, 0x41, 0x0c]; // #C2410C accent (terracotta)
 const fg = [0xff, 0xff, 0xff]; // white
 
 fs.writeFileSync(path.join(iconsDir, 'icon-192.png'), makePNG(192, bg, fg));
