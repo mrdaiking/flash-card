@@ -25,14 +25,12 @@ router.post('/push/subscribe', (req, res) => {
   res.status(201).json({ ok: true });
 });
 
-router.post('/push/test', async (req, res) => {
+async function broadcastPush(payload) {
   const subs = db.prepare('SELECT * FROM push_subscriptions').all();
-  const payload = JSON.stringify({ title: 'Felix Cards', body: 'Test notification 🔔' });
-
   const results = await Promise.allSettled(subs.map(s =>
     webpush.sendNotification(
       { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-      payload
+      JSON.stringify(payload)
     )
   ));
 
@@ -44,7 +42,37 @@ router.post('/push/test', async (req, res) => {
     }
   });
 
-  res.json({ sent: results.filter(r => r.status === 'fulfilled').length, total: subs.length });
+  return { sent: results.filter(r => r.status === 'fulfilled').length, total: subs.length };
+}
+
+router.post('/push/test', async (req, res) => {
+  res.json(await broadcastPush({ title: 'Felix Cards', body: 'Test notification 🔔' }));
 });
 
+// Daily reminder: only pings if something is actually due.
+async function sendDueReminder() {
+  const due = db.prepare('SELECT COUNT(*) as c FROM cards WHERE next_review <= ?').get(Date.now()).c;
+  if (!due) return;
+  await broadcastPush({
+    title: 'Felix Cards',
+    body: `${due} card${due === 1 ? '' : 's'} due for review`,
+  });
+}
+
+// Schedules sendDueReminder() to fire once every 24h at REMINDER_HOUR_UTC (server clock is UTC).
+function scheduleDailyReminder() {
+  const hour = Number(process.env.REMINDER_HOUR_UTC) || 0;
+  const msUntilNext = () => {
+    const next = new Date();
+    next.setUTCHours(hour, 0, 0, 0);
+    if (next <= new Date()) next.setUTCDate(next.getUTCDate() + 1);
+    return next - new Date();
+  };
+  setTimeout(function tick() {
+    sendDueReminder().catch(err => console.error('daily reminder failed:', err));
+    setInterval(() => sendDueReminder().catch(err => console.error('daily reminder failed:', err)), 24 * 60 * 60 * 1000);
+  }, msUntilNext());
+}
+
 module.exports = router;
+module.exports.scheduleDailyReminder = scheduleDailyReminder;

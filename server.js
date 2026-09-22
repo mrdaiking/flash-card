@@ -14,7 +14,9 @@ app.use('/api', auth, require('./routes/decks'));
 app.use('/api', auth, require('./routes/cards'));
 app.use('/api', auth, require('./routes/stats'));
 app.use('/api', auth, require('./routes/journal'));
-app.use('/api', auth, require('./routes/push'));
+const pushRoutes = require('./routes/push');
+app.use('/api', auth, pushRoutes);
+pushRoutes.scheduleDailyReminder();
 
 // SPA fallback
 app.get('*', (req, res) => {
