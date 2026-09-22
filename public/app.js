@@ -885,10 +885,15 @@ async function renderStats(app) {
       <div class="bg-surface rounded-2xl p-4">
         <h2 class="text-sm font-semibold text-slate-400 mb-1">Notifications</h2>
         <p class="text-xs text-slate-600 mb-3">Add to Home Screen first (iOS 16.4+) — push only works in the installed app.</p>
-        <div class="flex gap-2">
+        <div class="flex gap-2 mb-3">
           <button id="push-enable-btn" onclick="enablePush()" class="flex-1 h-12 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl font-semibold text-white transition-colors">Enable</button>
           <button onclick="sendTestPush()" class="flex-1 h-12 bg-slate-700 hover:bg-slate-600 active:bg-slate-800 rounded-xl font-semibold text-white transition-colors">Send Test</button>
         </div>
+        <label class="flex items-center justify-between gap-3">
+          <span class="text-sm text-slate-400">Daily reminder time</span>
+          <input id="reminder-time" type="time" onchange="saveReminderTime()"
+            class="bg-base border border-slate-700 rounded-lg px-3 h-10 text-white focus:outline-none focus:border-indigo-500" />
+        </label>
         <p id="push-status" class="text-xs text-slate-500 mt-2"></p>
       </div>
     </div>
@@ -898,6 +903,36 @@ async function renderStats(app) {
   if (heatmap) renderHeatmap(heatmap);
   if (weekly) renderWeeklyChart(weekly);
   updatePushButton();
+  loadReminderTime();
+}
+
+/* ── Daily reminder time (stored in UTC, edited in the browser's local time) ── */
+function utcToLocalTimeStr(hour, minute) {
+  const d = new Date();
+  d.setUTCHours(hour, minute, 0, 0);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function localTimeStrToUtc(timeStr) {
+  const [hour, minute] = timeStr.split(':').map(Number);
+  const d = new Date();
+  d.setHours(hour, minute, 0, 0);
+  return { hour: d.getUTCHours(), minute: d.getUTCMinutes() };
+}
+
+async function loadReminderTime() {
+  const input = document.getElementById('reminder-time');
+  if (!input) return;
+  const { hour, minute } = await api('/api/settings/reminder');
+  input.value = utcToLocalTimeStr(hour, minute);
+}
+
+async function saveReminderTime() {
+  const input = document.getElementById('reminder-time');
+  const status = document.getElementById('push-status');
+  const { hour, minute } = localTimeStrToUtc(input.value);
+  await api('/api/settings/reminder', { method: 'PUT', body: JSON.stringify({ hour, minute }) });
+  if (status) status.textContent = `Reminder set for ${input.value} your time.`;
 }
 
 /* ── Push notifications ── */

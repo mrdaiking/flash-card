@@ -49,6 +49,21 @@ router.post('/push/test', async (req, res) => {
   res.json(await broadcastPush({ title: 'Felix Cards', body: 'Test notification 🔔' }));
 });
 
+router.get('/settings/reminder', (req, res) => {
+  const { reminder_hour, reminder_minute } = db.prepare('SELECT reminder_hour, reminder_minute FROM settings WHERE id = 1').get();
+  res.json({ hour: reminder_hour, minute: reminder_minute });
+});
+
+router.put('/settings/reminder', (req, res) => {
+  const hour = Number(req.body.hour);
+  const minute = Number(req.body.minute);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23 || !Number.isInteger(minute) || minute < 0 || minute > 59) {
+    return res.status(400).json({ error: 'hour must be 0-23 and minute 0-59' });
+  }
+  db.prepare('UPDATE settings SET reminder_hour = ?, reminder_minute = ? WHERE id = 1').run(hour, minute);
+  res.json({ hour, minute });
+});
+
 // Daily reminder: only pings if something is actually due.
 async function sendDueReminder() {
   const due = db.prepare('SELECT COUNT(*) as c FROM cards WHERE next_review <= ?').get(Date.now()).c;
@@ -59,19 +74,21 @@ async function sendDueReminder() {
   });
 }
 
-// Schedules sendDueReminder() to fire once every 24h at REMINDER_HOUR_UTC (server clock is UTC).
+// Checked once a minute; fires at most once per UTC calendar day, at the
+// user-configured reminder_hour/reminder_minute (settings table, editable via PUT /settings/reminder).
+function checkReminderTick() {
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const row = db.prepare('SELECT * FROM settings WHERE id = 1').get();
+  if (row.last_reminder_date === today) return;
+  if (now.getUTCHours() !== row.reminder_hour || now.getUTCMinutes() !== row.reminder_minute) return;
+
+  db.prepare('UPDATE settings SET last_reminder_date = ? WHERE id = 1').run(today);
+  sendDueReminder().catch(err => console.error('daily reminder failed:', err));
+}
+
 function scheduleDailyReminder() {
-  const hour = Number(process.env.REMINDER_HOUR_UTC) || 0;
-  const msUntilNext = () => {
-    const next = new Date();
-    next.setUTCHours(hour, 0, 0, 0);
-    if (next <= new Date()) next.setUTCDate(next.getUTCDate() + 1);
-    return next - new Date();
-  };
-  setTimeout(function tick() {
-    sendDueReminder().catch(err => console.error('daily reminder failed:', err));
-    setInterval(() => sendDueReminder().catch(err => console.error('daily reminder failed:', err)), 24 * 60 * 60 * 1000);
-  }, msUntilNext());
+  setInterval(checkReminderTick, 60 * 1000);
 }
 
 module.exports = router;

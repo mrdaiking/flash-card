@@ -68,6 +68,16 @@ db.exec(`
     auth       TEXT NOT NULL,
     created_at INTEGER DEFAULT (unixepoch())
   );
+
+  -- Single-row table (id=1) for user-configurable settings.
+  CREATE TABLE IF NOT EXISTS settings (
+    id                 INTEGER PRIMARY KEY CHECK (id = 1),
+    reminder_hour      INTEGER NOT NULL DEFAULT 0,  -- UTC
+    reminder_minute    INTEGER NOT NULL DEFAULT 0,  -- UTC
+    last_reminder_date TEXT    NOT NULL DEFAULT ''
+  );
 `);
+db.prepare('INSERT OR IGNORE INTO settings (id, reminder_hour, reminder_minute) VALUES (1, ?, 0)')
+  .run(Number(process.env.REMINDER_HOUR_UTC) || 0);
 
 module.exports = db;
