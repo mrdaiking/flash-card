@@ -910,7 +910,18 @@ function urlBase64ToUint8Array(base64) {
 
 async function updatePushButton() {
   const btn = document.getElementById('push-enable-btn');
+  const status = document.getElementById('push-status');
   if (!btn) return;
+
+  const diag = [
+    `standalone=${window.navigator.standalone ?? matchMedia('(display-mode: standalone)').matches}`,
+    `serviceWorker=${'serviceWorker' in navigator}`,
+    `PushManager=${'PushManager' in window}`,
+    `Notification=${'Notification' in window}`,
+    `permission=${window.Notification?.permission ?? 'n/a'}`,
+  ].join(' ');
+  if (status) status.textContent = diag;
+
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     btn.textContent = 'Not supported';
     btn.disabled = true;
