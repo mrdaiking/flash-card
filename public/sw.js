@@ -129,3 +129,25 @@ self.addEventListener('fetch', e => {
 self.addEventListener('sync', e => {
   if (e.tag === SYNC_TAG) e.waitUntil(replayQueue());
 });
+
+// --- Push notifications ---
+self.addEventListener('push', e => {
+  const data = e.data?.json() ?? { title: 'Felix Cards', body: 'You have new activity.' };
+  e.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+    })
+  );
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window' }).then(clients => {
+      const existing = clients.find(c => 'focus' in c);
+      return existing ? existing.focus() : self.clients.openWindow('/');
+    })
+  );
+});

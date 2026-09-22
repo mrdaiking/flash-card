@@ -14,6 +14,7 @@ app.use('/api', auth, require('./routes/decks'));
 app.use('/api', auth, require('./routes/cards'));
 app.use('/api', auth, require('./routes/stats'));
 app.use('/api', auth, require('./routes/journal'));
+app.use('/api', auth, require('./routes/push'));
 
 // SPA fallback
 app.get('*', (req, res) => {

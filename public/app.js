@@ -877,9 +877,19 @@ async function renderStats(app) {
         <div id="heatmap"></div>
       </div>
 
-      <div class="bg-surface rounded-2xl p-4">
+      <div class="bg-surface rounded-2xl p-4 mb-5">
         <h2 class="text-sm font-semibold text-slate-400 mb-4">Reviews — Last 7 Days</h2>
         <div id="weekly-chart"></div>
+      </div>
+
+      <div class="bg-surface rounded-2xl p-4">
+        <h2 class="text-sm font-semibold text-slate-400 mb-1">Notifications</h2>
+        <p class="text-xs text-slate-600 mb-3">Add to Home Screen first (iOS 16.4+) — push only works in the installed app.</p>
+        <div class="flex gap-2">
+          <button id="push-enable-btn" onclick="enablePush()" class="flex-1 h-12 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl font-semibold text-white transition-colors">Enable</button>
+          <button onclick="sendTestPush()" class="flex-1 h-12 bg-slate-700 hover:bg-slate-600 active:bg-slate-800 rounded-xl font-semibold text-white transition-colors">Send Test</button>
+        </div>
+        <p id="push-status" class="text-xs text-slate-500 mt-2"></p>
       </div>
     </div>
   `;
@@ -887,6 +897,64 @@ async function renderStats(app) {
   if (growth) renderGrowthChart(growth);
   if (heatmap) renderHeatmap(heatmap);
   if (weekly) renderWeeklyChart(weekly);
+  updatePushButton();
+}
+
+/* ── Push notifications ── */
+function urlBase64ToUint8Array(base64) {
+  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+  const base64Safe = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64Safe);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+async function updatePushButton() {
+  const btn = document.getElementById('push-enable-btn');
+  if (!btn) return;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    btn.textContent = 'Not supported';
+    btn.disabled = true;
+    return;
+  }
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  btn.textContent = sub ? 'Enabled ✓' : 'Enable';
+}
+
+async function enablePush() {
+  const status = document.getElementById('push-status');
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    status.textContent = 'Push not supported in this browser. On iPhone: Share → Add to Home Screen, then open the app from your Home Screen.';
+    return;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      status.textContent = 'Notification permission denied.';
+      return;
+    }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      const { key } = await api('/api/push/vapid-public-key');
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(key),
+      });
+    }
+    await api('/api/push/subscribe', { method: 'POST', body: JSON.stringify(sub.toJSON()) });
+    status.textContent = 'Notifications enabled on this device.';
+    updatePushButton();
+  } catch (err) {
+    status.textContent = `Failed: ${err.message}`;
+  }
+}
+
+async function sendTestPush() {
+  const status = document.getElementById('push-status');
+  status.textContent = 'Sending…';
+  const result = await api('/api/push/test', { method: 'POST' });
+  status.textContent = result ? `Sent to ${result.sent}/${result.total} device(s).` : 'Failed to send.';
 }
 
 function renderGrowthChart(data) {
