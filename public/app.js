@@ -6,6 +6,38 @@ const md = text => {
   return escHtml(text);
 };
 
+/* ── Card images: compress client-side, embed as base64 markdown ── */
+function compressImageToDataUrl(file, maxDim = 1000, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(img.src);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function insertAtCursor(textarea, text) {
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? textarea.value.length;
+  textarea.value = textarea.value.slice(0, start) + text + textarea.value.slice(end);
+  textarea.selectionStart = textarea.selectionEnd = start + text.length;
+  textarea.dispatchEvent(new Event('input'));
+}
+
+let imageUploadTargetId = null;
+function pickImageFor(textareaId) {
+  imageUploadTargetId = textareaId;
+  document.getElementById('image-picker').click();
+}
+
 /* ── Text-to-Speech ── */
 const speakerOnSVG = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5L6 9H2v6h4l5 4V5z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>`;
 const speakerOffSVG = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5L6 9H2v6h4l5 4V5z"/><line stroke-linecap="round" stroke-linejoin="round" stroke-width="2" x1="23" y1="9" x2="17" y2="15"/><line stroke-linecap="round" stroke-linejoin="round" stroke-width="2" x1="17" y1="9" x2="23" y2="15"/></svg>`;
@@ -756,6 +788,7 @@ async function renderEditCard(app, cardId, deckId) {
           <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Front</label>
           <textarea id="edit-front" rows="4" placeholder="Question or term..."
             class="w-full bg-surface border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 resize-none">${escHtml(front)}</textarea>
+          <button type="button" id="image-btn-edit-front" onclick="pickImageFor('edit-front')" class="mt-2 text-xs text-indigo-400 hover:text-indigo-300">+ Add image</button>
           <div class="mt-2 p-3 bg-base rounded-xl text-white text-sm prose-content min-h-10" id="preview-front">
             ${front ? md(front) : '<span class="text-slate-600">Preview...</span>'}
           </div>
@@ -765,6 +798,7 @@ async function renderEditCard(app, cardId, deckId) {
           <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Back</label>
           <textarea id="edit-back" rows="4" placeholder="Answer or definition..."
             class="w-full bg-surface border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 resize-none">${escHtml(back)}</textarea>
+          <button type="button" id="image-btn-edit-back" onclick="pickImageFor('edit-back')" class="mt-2 text-xs text-indigo-400 hover:text-indigo-300">+ Add image</button>
           <div class="mt-2 p-3 bg-base rounded-xl text-white text-sm prose-content min-h-10" id="preview-back">
             ${back ? md(back) : '<span class="text-slate-600">Preview...</span>'}
           </div>
@@ -774,10 +808,13 @@ async function renderEditCard(app, cardId, deckId) {
           <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Example / chunk in context</label>
           <textarea id="edit-example" rows="2" placeholder="e.g. leverage our existing data to improve UX"
             class="w-full bg-surface border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 resize-none">${escHtml(example)}</textarea>
+          <button type="button" id="image-btn-edit-example" onclick="pickImageFor('edit-example')" class="mt-2 text-xs text-indigo-400 hover:text-indigo-300">+ Add image</button>
           <div class="mt-2 p-3 bg-base rounded-xl text-slate-300 text-sm italic prose-content min-h-10" id="preview-example">
             ${example ? md(example) : '<span class="text-slate-600">Preview...</span>'}
           </div>
         </div>
+
+        <input type="file" id="image-picker" accept="image/*" class="hidden" />
 
         <div>
           <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Type</label>
@@ -806,6 +843,25 @@ async function renderEditCard(app, cardId, deckId) {
   updatePreview('edit-front', 'preview-front');
   updatePreview('edit-back', 'preview-back');
   updatePreview('edit-example', 'preview-example');
+
+  document.getElementById('image-picker').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file || !imageUploadTargetId) return;
+    const btn = document.getElementById(`image-btn-${imageUploadTargetId}`);
+    const originalLabel = btn.textContent;
+    btn.textContent = 'Compressing...';
+    btn.disabled = true;
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      insertAtCursor(document.getElementById(imageUploadTargetId), `\n![](${dataUrl})\n`);
+    } catch {
+      alert('Could not process that image.');
+    } finally {
+      btn.textContent = originalLabel;
+      btn.disabled = false;
+    }
+  });
 }
 
 async function saveCard(cardId, deckId) {
