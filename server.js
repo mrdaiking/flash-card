@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const app = express();
 app.use(express.json({ limit: '8mb' }));
@@ -8,6 +9,10 @@ app.use(express.text({ type: 'text/plain' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const auth = require('./middleware/auth');
+
+let commitHash = 'dev';
+try { commitHash = execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim(); } catch {}
+app.get('/api/version', auth, (req, res) => res.json({ commit: commitHash }));
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api', auth, require('./routes/decks'));

@@ -1135,6 +1135,8 @@ async function renderStats(app) {
         </label>
         <p id="push-status" class="text-xs text-muted mt-2"></p>
       </div>
+
+      <p id="app-version" class="text-center text-xs text-muted mt-6 mb-2"></p>
     </div>
   `;
 
@@ -1144,6 +1146,10 @@ async function renderStats(app) {
   updatePushButton();
   loadReminderTime();
   updateThemeButtons();
+  api('/api/version').then(v => {
+    const el = document.getElementById('app-version');
+    if (el && v) el.textContent = `Felix Cards · ${v.commit}`;
+  });
 }
 
 /* ── Daily reminder time (stored in UTC, edited in the browser's local time) ── */
