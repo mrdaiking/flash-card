@@ -72,6 +72,26 @@ router.get('/decks/:id/due', (req, res) => {
   res.json(cards);
 });
 
+// Favorited cards — ignores next_review entirely (studyable on demand, not gated by SM-2 due-date).
+router.get('/cards/favorites', (req, res) => {
+  const cards = db.prepare('SELECT * FROM cards WHERE is_favorite = 1 ORDER BY next_review ASC').all();
+  res.json(cards);
+});
+
+router.get('/decks/:id/favorites', (req, res) => {
+  const cards = db.prepare(
+    'SELECT * FROM cards WHERE deck_id = ? AND is_favorite = 1 ORDER BY next_review ASC'
+  ).all(req.params.id);
+  res.json(cards);
+});
+
+router.post('/cards/:id/favorite', (req, res) => {
+  const favorite = req.body.favorite ? 1 : 0;
+  const result = db.prepare('UPDATE cards SET is_favorite = ? WHERE id = ?').run(favorite, req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Card not found' });
+  res.json({ id: Number(req.params.id), is_favorite: favorite });
+});
+
 router.post('/cards/:id/review', (req, res) => {
   const rating = Number(req.body.rating);
   if (![1, 2, 3, 4].includes(rating)) return res.status(400).json({ error: 'Rating must be 1-4' });

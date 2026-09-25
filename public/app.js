@@ -244,7 +244,8 @@ function router() {
     renderDeckDetail(app, m[1]);
   } else if ((m = hash.match(/^#\/study\/([\w]+)/))) {
     setActiveNav('study');
-    renderStudy(app, m[1]);
+    const params = new URLSearchParams(hash.split('?')[1] || '');
+    renderStudy(app, m[1], params.get('favorites') === '1');
   } else if ((m = hash.match(/^#\/cards\/new/))) {
     setActiveNav('');
     const params = new URLSearchParams(hash.split('?')[1] || '');
@@ -414,6 +415,7 @@ async function renderDeckDetail(app, deckId) {
   if (!deck) { navigate('#/'); return; }
 
   const dueCount = cards.filter(c => c.next_review <= Date.now()).length;
+  const favoriteCount = cards.filter(c => c.is_favorite).length;
 
   app.innerHTML = `
     <div class="p-4 pt-6">
@@ -452,6 +454,12 @@ async function renderDeckDetail(app, deckId) {
         </button>
       </div>
 
+      ${favoriteCount > 0 ? `
+        <button onclick="navigate('#/study/${deckId}?favorites=1')"
+          class="w-full h-11 mb-5 border border-rate-hard/40 text-rate-hard rounded-xl font-semibold text-sm hover:bg-rate-hard/10 transition-colors flex items-center justify-center gap-2">
+          ${starSVG(true)} Study Favorites (${favoriteCount})
+        </button>` : ''}
+
       ${cards.length === 0 ? `
         <div class="text-center py-14 text-muted">
           <div class="text-4xl mb-3">🃏</div>
@@ -466,6 +474,10 @@ async function renderDeckDetail(app, deckId) {
                 <p class="text-muted text-xs truncate mt-0.5">${escHtml(c.back)}</p>
               </div>
               <div class="flex gap-1 flex-shrink-0">
+                <button id="fav-btn-${c.id}" data-fav="${c.is_favorite ? '1' : '0'}" onclick="toggleFavoriteInList(${c.id}, 'fav-btn-${c.id}')"
+                  class="w-9 h-9 flex items-center justify-center ${c.is_favorite ? 'text-rate-hard' : 'text-muted'} hover:text-rate-hard transition-colors rounded-lg hover:bg-base">
+                  ${starSVG(c.is_favorite)}
+                </button>
                 <button onclick="navigate('#/cards/${c.id}/edit?deck=${deckId}')"
                   class="w-9 h-9 flex items-center justify-center text-muted hover:text-ink transition-colors rounded-lg hover:bg-base">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -591,17 +603,20 @@ async function doImport(deckId) {
 ════════════════════════════════════════ */
 let study = null;
 
-async function renderStudy(app, deckId) {
+async function renderStudy(app, deckId, favoritesOnly = false) {
   app.innerHTML = `<div class="flex items-center justify-center h-64 text-muted">Loading cards...</div>`;
-  const cards = await api(deckId === 'all' ? '/api/cards/due' : `/api/decks/${deckId}/due`);
+  const url = favoritesOnly
+    ? (deckId === 'all' ? '/api/cards/favorites' : `/api/decks/${deckId}/favorites`)
+    : (deckId === 'all' ? '/api/cards/due' : `/api/decks/${deckId}/due`);
+  const cards = await api(url);
   if (!cards) return;
 
   if (cards.length === 0) {
     app.innerHTML = `
       <div class="flex flex-col items-center justify-center min-h-[70vh] p-8 text-center">
-        <div class="text-6xl mb-4">🎉</div>
-        <h2 class="text-2xl font-bold text-ink mb-2 font-heading">All caught up!</h2>
-        <p class="text-muted mb-8">No cards due right now.</p>
+        <div class="text-6xl mb-4">${favoritesOnly ? '⭐' : '🎉'}</div>
+        <h2 class="text-2xl font-bold text-ink mb-2 font-heading">${favoritesOnly ? 'No favorites yet' : 'All caught up!'}</h2>
+        <p class="text-muted mb-8">${favoritesOnly ? 'Star a card to add it here.' : 'No cards due right now.'}</p>
         <button onclick="navigate('#/')"
           class="h-12 px-8 bg-accent hover:bg-accent-dark rounded-xl text-on-accent font-semibold transition-colors">
           Back to Decks
@@ -610,8 +625,36 @@ async function renderStudy(app, deckId) {
     return;
   }
 
-  study = { cards, index: 0, flipped: false, ratings: { 1: 0, 2: 0, 3: 0, 4: 0 }, deckId };
+  study = { cards, index: 0, flipped: false, ratings: { 1: 0, 2: 0, 3: 0, 4: 0 }, deckId, favoritesOnly };
   drawStudyCard();
+}
+
+function starSVG(filled) {
+  return `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+}
+
+async function toggleFavoriteInStudy() {
+  const card = study.cards[study.index];
+  card.is_favorite = card.is_favorite ? 0 : 1;
+  ['fav-btn-front', 'fav-btn-back'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.classList.toggle('text-rate-hard', !!card.is_favorite);
+    btn.classList.toggle('text-muted', !card.is_favorite);
+    btn.innerHTML = starSVG(card.is_favorite);
+    btn.title = card.is_favorite ? 'Remove from favorites' : 'Add to favorites';
+  });
+  api(`/api/cards/${card.id}/favorite`, { method: 'POST', body: JSON.stringify({ favorite: !!card.is_favorite }) }).catch(() => {});
+}
+
+function toggleFavoriteInList(cardId, btnId) {
+  const btn = document.getElementById(btnId);
+  const favorite = btn.dataset.fav !== '1';
+  btn.dataset.fav = favorite ? '1' : '0';
+  btn.classList.toggle('text-rate-hard', favorite);
+  btn.classList.toggle('text-muted', !favorite);
+  btn.innerHTML = starSVG(favorite);
+  api(`/api/cards/${cardId}/favorite`, { method: 'POST', body: JSON.stringify({ favorite }) }).catch(() => {});
 }
 
 function drawStudyCard() {
@@ -695,6 +738,11 @@ function drawStudyCard() {
             <div class="card-front absolute inset-0 bg-surface rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer shadow-lg shadow-ink/10 select-none">
               <div class="prose-content text-ink text-xl text-center leading-relaxed">${md(card.front)}</div>
               <p class="text-muted text-xs mt-4">tap to reveal</p>
+              <button id="fav-btn-front" onclick="event.stopPropagation(); toggleFavoriteInStudy()"
+                class="absolute bottom-3 left-3 w-8 h-8 flex items-center justify-center ${card.is_favorite ? 'text-rate-hard' : 'text-muted'} hover:text-rate-hard transition-colors"
+                title="${card.is_favorite ? 'Remove from favorites' : 'Add to favorites'}">
+                ${starSVG(card.is_favorite)}
+              </button>
               <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(card.front))})"
                 class="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center text-muted hover:text-ink transition-colors"
                 title="Replay">
@@ -708,6 +756,11 @@ function drawStudyCard() {
                 <div class="mt-3 pt-3 border-t border-accent/20 w-full">
                   <div class="prose-content text-muted text-sm text-center italic leading-relaxed">${md(card.example)}</div>
                 </div>` : ''}
+              <button id="fav-btn-back" onclick="event.stopPropagation(); toggleFavoriteInStudy()"
+                class="absolute bottom-3 left-3 w-8 h-8 flex items-center justify-center ${card.is_favorite ? 'text-rate-hard' : 'text-muted'} hover:text-rate-hard transition-colors"
+                title="${card.is_favorite ? 'Remove from favorites' : 'Add to favorites'}">
+                ${starSVG(card.is_favorite)}
+              </button>
               <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(backSpeak))})"
                 class="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center text-accent/50 hover:text-accent transition-colors"
                 title="Replay">

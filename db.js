@@ -45,8 +45,9 @@ db.exec(`
 
 // ── Additive migrations (idempotent; never drop existing data) ──
 const cardCols = db.prepare(`PRAGMA table_info(cards)`).all().map(c => c.name);
-if (!cardCols.includes('example')) db.exec(`ALTER TABLE cards ADD COLUMN example TEXT DEFAULT ''`);
-if (!cardCols.includes('type'))    db.exec(`ALTER TABLE cards ADD COLUMN type TEXT DEFAULT 'vocab'`);
+if (!cardCols.includes('example'))     db.exec(`ALTER TABLE cards ADD COLUMN example TEXT DEFAULT ''`);
+if (!cardCols.includes('type'))        db.exec(`ALTER TABLE cards ADD COLUMN type TEXT DEFAULT 'vocab'`);
+if (!cardCols.includes('is_favorite')) db.exec(`ALTER TABLE cards ADD COLUMN is_favorite INTEGER DEFAULT 0`);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS journal_entries (
