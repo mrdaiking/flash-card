@@ -1,4 +1,4 @@
-const CACHE = 'felix-cards-v8';
+const CACHE = 'felix-cards-v9';
 const SYNC_TAG = 'review-sync';
 const IDB_NAME = 'felix-cards-sw';
 const IDB_STORE = 'pending-reviews';

@@ -1,3 +1,47 @@
+/* ── Theme (Light / Dark / System) ── */
+const THEME_KEY = 'fc_theme';
+const THEME_COLORS = { light: '#C2410C', dark: '#E2662E' };
+
+function getThemePref() {
+  return localStorage.getItem(THEME_KEY) || 'system';
+}
+
+function resolvedTheme(pref = getThemePref()) {
+  if (pref === 'dark' || pref === 'light') return pref;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme() {
+  const isDark = resolvedTheme() === 'dark';
+  document.documentElement.classList.toggle('dark', isDark);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = isDark ? THEME_COLORS.dark : THEME_COLORS.light;
+}
+
+function setTheme(pref) {
+  localStorage.setItem(THEME_KEY, pref);
+  applyTheme();
+  updateThemeButtons();
+}
+
+function updateThemeButtons() {
+  const pref = getThemePref();
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    const active = btn.dataset.theme === pref;
+    btn.classList.toggle('bg-accent', active);
+    btn.classList.toggle('border-accent', active);
+    btn.classList.toggle('text-on-accent', active);
+    btn.classList.toggle('border-line', !active);
+    btn.classList.toggle('text-muted', !active);
+  });
+}
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (getThemePref() === 'system') applyTheme();
+});
+
+applyTheme();
+
 /* ── Markdown helper ── */
 const md = text => {
   if (!text) return '';
@@ -966,6 +1010,15 @@ async function renderStats(app) {
         <div id="weekly-chart"></div>
       </div>
 
+      <div class="bg-surface rounded-2xl p-4 mb-5">
+        <h2 class="text-sm font-semibold text-muted mb-3">Appearance</h2>
+        <div class="grid grid-cols-3 gap-2">
+          <button data-theme="light" onclick="setTheme('light')" class="theme-btn h-11 rounded-xl text-sm font-semibold border border-line text-muted transition-colors">Light</button>
+          <button data-theme="dark" onclick="setTheme('dark')" class="theme-btn h-11 rounded-xl text-sm font-semibold border border-line text-muted transition-colors">Dark</button>
+          <button data-theme="system" onclick="setTheme('system')" class="theme-btn h-11 rounded-xl text-sm font-semibold border border-line text-muted transition-colors">By Device</button>
+        </div>
+      </div>
+
       <div class="bg-surface rounded-2xl p-4">
         <h2 class="text-sm font-semibold text-muted mb-1">Notifications</h2>
         <p class="text-xs text-muted mb-3">Add to Home Screen first (iOS 16.4+) — push only works in the installed app.</p>
@@ -988,6 +1041,7 @@ async function renderStats(app) {
   if (weekly) renderWeeklyChart(weekly);
   updatePushButton();
   loadReminderTime();
+  updateThemeButtons();
 }
 
 /* ── Daily reminder time (stored in UTC, edited in the browser's local time) ── */
@@ -1112,15 +1166,15 @@ function renderGrowthChart(data) {
     <svg viewBox="0 0 ${W} ${H}" class="w-full">
       <defs>
         <linearGradient id="growthGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#C2410C" stop-opacity="0.25"/>
-          <stop offset="100%" stop-color="#C2410C" stop-opacity="0"/>
+          <stop offset="0%" style="stop-color:rgb(var(--color-accent))" stop-opacity="0.25"/>
+          <stop offset="100%" style="stop-color:rgb(var(--color-accent))" stop-opacity="0"/>
         </linearGradient>
       </defs>
       <path d="${area}" fill="url(#growthGrad)"/>
-      <path d="${line}" fill="none" stroke="#C2410C" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-      <circle cx="${pts[pts.length - 1][0].toFixed(1)}" cy="${pts[pts.length - 1][1].toFixed(1)}" r="3.5" fill="#9A3412"/>
-      <text x="${pad}" y="12" fill="#8A7565" font-size="9" font-family="sans-serif">${min}</text>
-      <text x="${(W - pad).toFixed(0)}" y="12" text-anchor="end" fill="#3D2A1F" font-size="10" font-family="sans-serif" font-weight="bold">${max} words</text>
+      <path d="${line}" fill="none" style="stroke:rgb(var(--color-accent))" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${pts[pts.length - 1][0].toFixed(1)}" cy="${pts[pts.length - 1][1].toFixed(1)}" r="3.5" style="fill:rgb(var(--color-accent-dark))"/>
+      <text x="${pad}" y="12" style="fill:rgb(var(--color-muted))" font-size="9" font-family="sans-serif">${min}</text>
+      <text x="${(W - pad).toFixed(0)}" y="12" text-anchor="end" style="fill:rgb(var(--color-ink))" font-size="10" font-family="sans-serif" font-weight="bold">${max} words</text>
     </svg>`;
 }
 
@@ -1134,11 +1188,11 @@ function renderHeatmap(data) {
   const H = 7 * (cell + gap) + topPad;
 
   const shade = c => {
-    if (!c) return '#E8DCC9';
+    if (!c) return 'rgb(var(--color-line))';
     const t = c / max;
-    if (t > 0.66) return '#9A3412';
-    if (t > 0.33) return '#C2410C';
-    return '#E8B49A';
+    if (t > 0.66) return 'rgb(var(--color-accent-dark))';
+    if (t > 0.33) return 'rgb(var(--color-accent))';
+    return 'rgb(var(--color-accent-soft))';
   };
 
   // data[0] is oldest; align first column's weekday offset
@@ -1149,7 +1203,7 @@ function renderHeatmap(data) {
     const row = idx % 7;
     const x = col * (cell + gap);
     const y = topPad + row * (cell + gap);
-    return `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2.5" fill="${shade(d.count)}"><title>${d.day}: ${d.count}</title></rect>`;
+    return `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2.5" style="fill:${shade(d.count)}"><title>${d.day}: ${d.count}</title></rect>`;
   }).join('');
 
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full" style="max-width:${W}px">${rects}</svg>`;
@@ -1175,9 +1229,9 @@ function renderWeeklyChart(data) {
     const y = H - 20 - bh;
     const day = dayNames[new Date(d.day + 'T12:00:00').getDay()];
     return `
-      <rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="4" fill="${d.count ? '#C2410C' : '#E8DCC9'}"/>
-      <text x="${x + barW / 2}" y="${H - 5}" text-anchor="middle" fill="#8A7565" font-size="9" font-family="sans-serif">${day}</text>
-      ${d.count ? `<text x="${x + barW / 2}" y="${y - 4}" text-anchor="middle" fill="#3D2A1F" font-size="9" font-family="sans-serif">${d.count}</text>` : ''}
+      <rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="4" style="fill:${d.count ? 'rgb(var(--color-accent))' : 'rgb(var(--color-line))'}"/>
+      <text x="${x + barW / 2}" y="${H - 5}" text-anchor="middle" style="fill:rgb(var(--color-muted))" font-size="9" font-family="sans-serif">${day}</text>
+      ${d.count ? `<text x="${x + barW / 2}" y="${y - 4}" text-anchor="middle" style="fill:rgb(var(--color-ink))" font-size="9" font-family="sans-serif">${d.count}</text>` : ''}
     `;
   }).join('');
 

@@ -12,26 +12,34 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Raleway:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    // Applied before first paint to avoid a flash of the wrong theme.
+    (function () {
+      var pref = localStorage.getItem('fc_theme') || 'system';
+      var dark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.classList.toggle('dark', dark);
+    })();
+  </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            paper: '#FFFBEB',
-            surface: '#FFFFFF',
-            base: '#F2E6E2',
-            ink: '#3D2A1F',
-            muted: '#8A7565',
-            line: '#E8DCC9',
-            accent: '#C2410C',
-            'accent-dark': '#9A3412',
-            'accent-tint': '#F2E6E2',
-            'on-accent': '#FFFFFF',
-            'rate-again': '#DC2626',
-            'rate-hard': '#D97706',
-            'rate-good': '#4A7B7C',
-            'rate-easy': '#6B7B3C',
+            paper: 'rgb(var(--color-paper) / <alpha-value>)',
+            surface: 'rgb(var(--color-surface) / <alpha-value>)',
+            base: 'rgb(var(--color-base) / <alpha-value>)',
+            ink: 'rgb(var(--color-ink) / <alpha-value>)',
+            muted: 'rgb(var(--color-muted) / <alpha-value>)',
+            line: 'rgb(var(--color-line) / <alpha-value>)',
+            accent: 'rgb(var(--color-accent) / <alpha-value>)',
+            'accent-dark': 'rgb(var(--color-accent-dark) / <alpha-value>)',
+            'accent-tint': 'rgb(var(--color-accent-tint) / <alpha-value>)',
+            'on-accent': 'rgb(var(--color-on-accent) / <alpha-value>)',
+            'rate-again': 'rgb(var(--color-rate-again) / <alpha-value>)',
+            'rate-hard': 'rgb(var(--color-rate-hard) / <alpha-value>)',
+            'rate-good': 'rgb(var(--color-rate-good) / <alpha-value>)',
+            'rate-easy': 'rgb(var(--color-rate-easy) / <alpha-value>)',
           },
           fontFamily: {
             sans: ['Raleway', 'ui-sans-serif', 'system-ui', 'sans-serif'],
@@ -42,7 +50,41 @@
     }
   </script>
   <style>
-    body { background-color: #FFFBEB; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --color-paper: 255 251 235;
+      --color-surface: 255 255 255;
+      --color-base: 242 230 226;
+      --color-ink: 61 42 31;
+      --color-muted: 138 117 101;
+      --color-line: 232 220 201;
+      --color-accent: 194 65 12;
+      --color-accent-dark: 154 52 18;
+      --color-accent-tint: 242 230 226;
+      --color-accent-soft: 232 180 154;
+      --color-on-accent: 255 255 255;
+      --color-rate-again: 220 38 38;
+      --color-rate-hard: 217 119 6;
+      --color-rate-good: 74 123 124;
+      --color-rate-easy: 107 123 60;
+    }
+    :root.dark {
+      --color-paper: 27 20 15;
+      --color-surface: 42 32 25;
+      --color-base: 20 15 11;
+      --color-ink: 242 231 218;
+      --color-muted: 168 148 132;
+      --color-line: 61 47 36;
+      --color-accent: 226 102 46;
+      --color-accent-dark: 194 65 12;
+      --color-accent-tint: 61 35 19;
+      --color-accent-soft: 107 61 35;
+      --color-on-accent: 255 255 255;
+      --color-rate-again: 239 83 80;
+      --color-rate-hard: 245 166 35;
+      --color-rate-good: 95 168 174;
+      --color-rate-easy: 143 179 94;
+    }
+    body { background-color: rgb(var(--color-paper)); -webkit-tap-highlight-color: transparent; }
     .card-scene { perspective: 1000px; }
     .card-inner {
       transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
@@ -58,8 +100,8 @@
     .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
     .safe-top { padding-top: max(env(safe-area-inset-top), 0px); }
     .prose-content img { max-width: 100%; border-radius: 0.5rem; }
-    .prose-content pre { background: #F2E6E2; padding: 0.75rem; border-radius: 0.5rem; overflow-x: auto; margin: 0.5rem 0; }
-    .prose-content code { font-size: 0.85em; background: #F2E6E2; padding: 0.1em 0.3em; border-radius: 0.25rem; }
+    .prose-content pre { background: rgb(var(--color-base)); padding: 0.75rem; border-radius: 0.5rem; overflow-x: auto; margin: 0.5rem 0; }
+    .prose-content code { font-size: 0.85em; background: rgb(var(--color-base)); padding: 0.1em 0.3em; border-radius: 0.25rem; }
     .prose-content pre code { background: transparent; padding: 0; }
     .prose-content p { margin: 0.25rem 0; }
   </style>
