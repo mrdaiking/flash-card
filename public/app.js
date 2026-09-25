@@ -288,6 +288,23 @@ function escHtml(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// Generic animated show/hide for the app's bottom-sheet/centered modals
+// (new-deck-modal, deck-menu, rename-modal, import-modal). The slide/fade
+// itself is pure CSS (index.html), gated behind prefers-reduced-motion;
+// these just sequence the class toggles so the transition has something
+// to animate from.
+function showModal(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('hidden');
+  el.offsetHeight; // force reflow so the transition below isn't skipped
+  el.classList.add('modal-open');
+}
+function hideModalEl(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('modal-open');
+  setTimeout(() => el.classList.add('hidden'), 200);
+}
 function loading(app) {
   app.innerHTML = `<div class="p-4 pt-6 space-y-3 animate-pulse">
     <div class="h-8 bg-surface rounded w-1/3"></div>
@@ -387,13 +404,11 @@ async function renderHome(app) {
 }
 
 function showNewDeckModal() {
-  document.getElementById('new-deck-modal').classList.remove('hidden');
+  showModal('new-deck-modal');
   setTimeout(() => document.getElementById('new-deck-name').focus(), 80);
 }
 function hideNewDeckModal(e) {
-  if (!e || e.target === document.getElementById('new-deck-modal')) {
-    document.getElementById('new-deck-modal').classList.add('hidden');
-  }
+  if (!e || e.target === document.getElementById('new-deck-modal')) hideModalEl('new-deck-modal');
 }
 async function createDeck() {
   const name = document.getElementById('new-deck-name').value.trim();
@@ -549,17 +564,16 @@ async function renderDeckDetail(app, deckId) {
   `;
 }
 
-function showDeckMenu() { document.getElementById('deck-menu').classList.remove('hidden'); }
+function showDeckMenu() { showModal('deck-menu'); }
 function hideDeckMenu(e) {
-  if (!e || e.target === document.getElementById('deck-menu'))
-    document.getElementById('deck-menu').classList.add('hidden');
+  if (!e || e.target === document.getElementById('deck-menu')) hideModalEl('deck-menu');
 }
 function showRenameModal() {
   hideDeckMenu();
-  document.getElementById('rename-modal').classList.remove('hidden');
+  showModal('rename-modal');
   setTimeout(() => { const i = document.getElementById('rename-input'); i.focus(); i.select(); }, 80);
 }
-function hideRenameModal() { document.getElementById('rename-modal').classList.add('hidden'); }
+function hideRenameModal() { hideModalEl('rename-modal'); }
 async function renameDeck(deckId) {
   const name = document.getElementById('rename-input').value.trim();
   if (!name) return;
@@ -578,10 +592,9 @@ async function deleteCard(cardId, deckId) {
   await api(`/api/cards/${cardId}`, { method: 'DELETE' });
   renderDeckDetail(document.getElementById('app'), deckId);
 }
-function showImportModal() { document.getElementById('import-modal').classList.remove('hidden'); }
+function showImportModal() { showModal('import-modal'); }
 function hideImportModal(e) {
-  if (!e || e.target === document.getElementById('import-modal'))
-    document.getElementById('import-modal').classList.add('hidden');
+  if (!e || e.target === document.getElementById('import-modal')) hideModalEl('import-modal');
 }
 async function doImport(deckId) {
   const text = document.getElementById('import-text').value;
@@ -633,6 +646,14 @@ function starSVG(filled) {
   return `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
 }
 
+// Bounce only on the way IN to favorited — matches the "like" convention
+// (unfavoriting is a plain, unceremonious state change).
+function popFavorite(btn) {
+  btn.classList.remove('animate-star-pop');
+  void btn.offsetWidth; // reflow so the animation restarts if toggled repeatedly
+  btn.classList.add('animate-star-pop');
+}
+
 async function toggleFavoriteInStudy() {
   const card = study.cards[study.index];
   card.is_favorite = card.is_favorite ? 0 : 1;
@@ -643,6 +664,7 @@ async function toggleFavoriteInStudy() {
     btn.classList.toggle('text-muted', !card.is_favorite);
     btn.innerHTML = starSVG(card.is_favorite);
     btn.title = card.is_favorite ? 'Remove from favorites' : 'Add to favorites';
+    if (card.is_favorite) popFavorite(btn);
   });
   api(`/api/cards/${card.id}/favorite`, { method: 'POST', body: JSON.stringify({ favorite: !!card.is_favorite }) }).catch(() => {});
 }
@@ -654,6 +676,7 @@ function toggleFavoriteInList(cardId, btnId) {
   btn.classList.toggle('text-rate-hard', favorite);
   btn.classList.toggle('text-muted', !favorite);
   btn.innerHTML = starSVG(favorite);
+  if (favorite) popFavorite(btn);
   api(`/api/cards/${cardId}/favorite`, { method: 'POST', body: JSON.stringify({ favorite }) }).catch(() => {});
 }
 
@@ -733,7 +756,7 @@ function drawStudyCard() {
 
       <!-- Card -->
       <div class="flex-1 flex items-center justify-center">
-        <div class="card-scene w-full" style="height:260px" id="card-scene" onclick="flipCard()">
+        <div class="card-scene w-full animate-card-in" style="height:260px" id="card-scene" onclick="flipCard()">
           <div class="card-inner w-full h-full${flipped ? ' flipped' : ''}" id="card-inner">
             <div class="card-front absolute inset-0 bg-surface rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer shadow-lg shadow-ink/10 select-none">
               <div class="prose-content text-ink text-xl text-center leading-relaxed">${md(card.front)}</div>
@@ -840,18 +863,44 @@ async function rate(rating) {
 function setupSwipe() {
   const scene = document.getElementById('card-scene');
   if (!scene) return;
-  let startX = 0, startY = 0;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let startX = 0, startY = 0, dragging = false;
+
   scene.addEventListener('touchstart', e => {
+    if (study.flipped) return;
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
+    dragging = true;
+    scene.style.transition = 'none';
   }, { passive: true });
+
+  scene.addEventListener('touchmove', e => {
+    if (!dragging || study.flipped || reduceMotion) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if (Math.abs(dy) > Math.abs(dx) || Math.abs(dx) < 10) return; // vertical scroll or jitter — leave taps crisp
+    scene.style.transform = `translateX(${dx}px) rotate(${dx / 20}deg)`;
+    scene.style.opacity = Math.max(1 - Math.abs(dx) / 400, 0.4);
+  }, { passive: true });
+
   scene.addEventListener('touchend', e => {
+    dragging = false;
     const dx = e.changedTouches[0].clientX - startX;
     const dy = e.changedTouches[0].clientY - startY;
-    if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx)) return; // not a horizontal swipe
-    if (study.flipped) return;
+    scene.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s';
+
+    if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) || study.flipped) {
+      scene.style.transform = '';
+      scene.style.opacity = '';
+      return;
+    }
+    const dir = dx < 0 ? -1 : 1;
+    if (!reduceMotion) {
+      scene.style.transform = `translateX(${dir * 500}px) rotate(${dir * 20}deg)`;
+      scene.style.opacity = '0';
+    }
     flipCard();
-    setTimeout(() => rate(dx < 0 ? 1 : 4), 460);
+    setTimeout(() => rate(dx < 0 ? 1 : 4), reduceMotion ? 0 : 300);
   }, { passive: true });
 }
 

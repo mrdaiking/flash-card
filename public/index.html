@@ -104,6 +104,33 @@
     .prose-content code { font-size: 0.85em; background: rgb(var(--color-base)); padding: 0.1em 0.3em; border-radius: 0.25rem; }
     .prose-content pre code { background: transparent; padding: 0; }
     .prose-content p { margin: 0.25rem 0; }
+
+    /* Motion — all gated behind prefers-reduced-motion so it's opt-out, not forced. */
+    @media (prefers-reduced-motion: no-preference) {
+      @keyframes cardIn {
+        from { opacity: 0; transform: translateY(14px) scale(0.98); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      .animate-card-in { animation: cardIn 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
+
+      @keyframes starPop {
+        0%   { transform: scale(1); }
+        40%  { transform: scale(1.35); }
+        100% { transform: scale(1); }
+      }
+      .animate-star-pop { animation: starPop 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
+
+      #new-deck-modal > div, #deck-menu > div, #rename-modal > div, #import-modal > div {
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s;
+        transform: translateY(16px);
+        opacity: 0;
+      }
+      #new-deck-modal.modal-open > div, #deck-menu.modal-open > div,
+      #rename-modal.modal-open > div, #import-modal.modal-open > div {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
   </style>
 </head>
 <body class="text-ink font-sans min-h-screen select-none">
