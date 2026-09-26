@@ -795,7 +795,7 @@ function drawStudyCard() {
       </div>
 
       <!-- Rating buttons -->
-      <div id="rating-btns" class="${flipped ? '' : 'invisible'} grid grid-cols-4 gap-2 mt-5">
+      <div id="rating-btns" class="${flipped ? '' : 'invisible'} grid grid-cols-2 gap-2 mt-5">
         <button onclick="rate(1)"
           class="h-14 bg-rate-again/10 border border-rate-again/40 rounded-xl text-rate-again font-semibold hover:bg-rate-again/20 active:scale-95 transition-all text-sm">
           Again
@@ -805,11 +805,11 @@ function drawStudyCard() {
           Hard
         </button>
         <button onclick="rate(3)"
-          class="h-14 bg-rate-good/10 border border-rate-good/40 rounded-xl text-rate-good font-semibold hover:bg-rate-good/20 active:scale-95 transition-all text-sm">
+          class="h-16 bg-rate-good/10 border border-rate-good/40 rounded-xl text-rate-good font-semibold hover:bg-rate-good/20 active:scale-95 transition-all text-base">
           Good
         </button>
         <button onclick="rate(4)"
-          class="h-14 bg-rate-easy/10 border border-rate-easy/40 rounded-xl text-rate-easy font-semibold hover:bg-rate-easy/20 active:scale-95 transition-all text-sm">
+          class="h-16 bg-rate-easy/10 border border-rate-easy/40 rounded-xl text-rate-easy font-semibold hover:bg-rate-easy/20 active:scale-95 transition-all text-base">
           Easy
         </button>
       </div>
