@@ -133,11 +133,15 @@ function stripHtml(html) {
   return tmp.textContent || tmp.innerText || '';
 }
 
-// Plain-text preview for compact list rows: renders markdown then strips it
-// back to text, so embedded images/formatting never leak into a one-line
-// preview as raw syntax (a pasted image's data URL is thousands of chars).
-function previewText(source) {
-  return stripHtml(md(source)).trim() || '🖼 Image';
+// Splits a markdown field into a real thumbnail (if it has an image) plus a
+// clean text preview, for compact list rows that need to show both instead
+// of leaking raw "![](...)" syntax as text (a pasted image is a data URL
+// thousands of characters long).
+function previewParts(source) {
+  if (!source) return { imageUrl: null, text: '' };
+  const m = source.match(/!\[[^\]]*\]\(([^)]+)\)/);
+  const withoutImg = source.replace(/!\[[^\]]*\]\([^)]+\)/g, '');
+  return { imageUrl: m ? m[1] : null, text: stripHtml(md(withoutImg)).trim() };
 }
 
 function speak(text) {
@@ -493,11 +497,16 @@ async function renderDeckDetail(app, deckId) {
           <p class="text-sm mt-1">Add cards or use Import</p>
         </div>` : `
         <div class="space-y-2">
-          ${cards.map(c => `
+          ${cards.map(c => {
+            const front = previewParts(c.front);
+            const back = previewParts(c.back);
+            const thumb = front.imageUrl || back.imageUrl;
+            return `
             <div class="bg-surface rounded-xl p-4 flex items-center gap-3">
+              ${thumb ? `<img src="${escHtml(thumb)}" loading="lazy" class="w-11 h-11 rounded-lg object-cover flex-shrink-0">` : ''}
               <div class="flex-1 min-w-0">
-                <p class="text-ink truncate text-sm font-medium">${escHtml(previewText(c.front))}</p>
-                <p class="text-muted text-xs truncate mt-0.5">${escHtml(previewText(c.back))}</p>
+                <p class="text-ink truncate text-sm font-medium">${escHtml(front.text || (front.imageUrl ? '🖼 Image' : ''))}</p>
+                <p class="text-muted text-xs truncate mt-0.5">${escHtml(back.text || (back.imageUrl ? '🖼 Image' : ''))}</p>
               </div>
               <div class="flex gap-1 flex-shrink-0">
                 <button id="fav-btn-${c.id}" data-fav="${c.is_favorite ? '1' : '0'}" onclick="toggleFavoriteInList(${c.id}, 'fav-btn-${c.id}')"
@@ -517,7 +526,8 @@ async function renderDeckDetail(app, deckId) {
                   </svg>
                 </button>
               </div>
-            </div>`).join('')}
+            </div>`;
+          }).join('')}
         </div>`}
     </div>
 
@@ -1536,14 +1546,18 @@ async function renderRecap(app) {
       ${recap.new_words.length === 0 ? `
         <p class="text-muted text-sm mb-6">No new words added this week.</p>` : `
         <div class="space-y-2 mb-6">
-          ${recap.new_words.map(w => `
+          ${recap.new_words.map(w => {
+            const p = previewParts(w.front);
+            return `
             <div class="bg-surface rounded-xl p-3 flex items-center gap-3">
-              <span class="text-ink text-sm font-medium truncate flex-1 min-w-0">${escHtml(previewText(w.front))}</span>
+              ${p.imageUrl ? `<img src="${escHtml(p.imageUrl)}" loading="lazy" class="w-11 h-11 rounded-lg object-cover flex-shrink-0">` : ''}
+              <span class="text-ink text-sm font-medium truncate flex-1 min-w-0">${escHtml(p.text || (p.imageUrl ? '' : '🖼 Image'))}</span>
               <div class="flex items-center gap-2 flex-shrink-0">
                 ${typeBadge(w.type)}
                 <span class="text-xs text-muted">${fmtDate(w.created_at)}</span>
               </div>
-            </div>`).join('')}
+            </div>`;
+          }).join('')}
         </div>`}
 
       <h2 class="text-sm font-semibold text-muted uppercase tracking-wider mb-3">Journal this week</h2>
