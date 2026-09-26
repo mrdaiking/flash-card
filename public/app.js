@@ -651,7 +651,7 @@ async function renderStudy(app, deckId, favoritesOnly = false) {
         <div class="text-6xl mb-4">${favoritesOnly ? '⭐' : '🎉'}</div>
         <h2 class="text-2xl font-bold text-ink mb-2 font-heading">${favoritesOnly ? 'No favorites yet' : 'All caught up!'}</h2>
         <p class="text-muted mb-8">${favoritesOnly ? 'Star a card to add it here.' : 'No cards due right now.'}</p>
-        <button onclick="navigate('#/')"
+        <button onclick="leaveStudy('#/')"
           class="h-12 px-8 bg-accent hover:bg-accent-dark rounded-xl text-on-accent font-semibold transition-colors">
           Back to Decks
         </button>
@@ -730,7 +730,7 @@ function drawStudyCard() {
             <div class="text-sm text-rate-easy/70">Easy</div>
           </div>
         </div>
-        <button onclick="navigate('#/')"
+        <button onclick="leaveStudy('#/')"
           class="h-12 px-8 bg-accent hover:bg-accent-dark rounded-xl text-on-accent font-semibold transition-colors">
           Back to Decks
         </button>
@@ -749,7 +749,7 @@ function drawStudyCard() {
     <div class="flex flex-col min-h-screen p-4 pt-5 pb-32">
       <!-- Progress bar -->
       <div class="flex items-center gap-3 mb-5">
-        <button onclick="navigate('${backHash}')"
+        <button onclick="leaveStudy('${backHash}')"
           class="w-10 h-10 flex items-center justify-center text-muted hover:text-ink transition-colors -ml-2 flex-shrink-0">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -879,8 +879,18 @@ async function rate(rating) {
   study.index++;
   study.flipped = false;
   window.speechSynthesis?.cancel();
-  api(`/api/cards/${card.id}/review`, { method: 'POST', body: JSON.stringify({ rating }) }).catch(() => {});
+  // Fire-and-forget so card-to-card feels instant, but stash the promise so
+  // leaveStudy() can wait for it — otherwise the due-count badge you land on
+  // can still reflect the pre-review state if this hasn't landed yet.
+  study.pendingReview = api(`/api/cards/${card.id}/review`, { method: 'POST', body: JSON.stringify({ rating }) }).catch(() => {});
   drawStudyCard();
+}
+
+// Leaving study (back arrow or "Back to Decks") always routes through here so
+// the deck/home due-count badges are fresh the instant they render.
+async function leaveStudy(hash) {
+  await study?.pendingReview;
+  navigate(hash);
 }
 
 function setupSwipe() {
