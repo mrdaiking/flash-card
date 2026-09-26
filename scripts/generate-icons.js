@@ -52,27 +52,65 @@ function drawGlyph(pixels, size, char, gx, gy, scale, color) {
   }
 }
 
-function makePNG(size, bgColor, fgColor) {
-  const pixels = Buffer.alloc(size * size * 3);
+// Axis-aligned rounded rect, filled by a corner-radius distance test.
+// ponytail: no rotation (unlike the approved mockup's fanned/rotated cards) —
+// pure-pixel rotation+anti-aliasing isn't worth it at favicon scale; the
+// diagonal offset alone still reads as a stack.
+function fillRoundedRect(pixels, size, x, y, w, h, r, color) {
+  const x2 = x + w, y2 = y + h;
+  for (let py = Math.floor(y); py < Math.ceil(y2); py++) {
+    for (let px = Math.floor(x); px < Math.ceil(x2); px++) {
+      const cx = px + 0.5, cy = py + 0.5;
+      let inside = true;
+      if (cx < x + r && cy < y + r) inside = Math.hypot(cx - (x + r), cy - (y + r)) <= r;
+      else if (cx > x2 - r && cy < y + r) inside = Math.hypot(cx - (x2 - r), cy - (y + r)) <= r;
+      else if (cx < x + r && cy > y2 - r) inside = Math.hypot(cx - (x + r), cy - (y2 - r)) <= r;
+      else if (cx > x2 - r && cy > y2 - r) inside = Math.hypot(cx - (x2 - r), cy - (y2 - r)) <= r;
+      if (inside) setPixel(pixels, size, px, py, color);
+    }
+  }
+}
 
-  // Fill background
+function fillTriangle(pixels, size, p1, p2, p3, color) {
+  const minX = Math.floor(Math.min(p1[0], p2[0], p3[0]));
+  const maxX = Math.ceil(Math.max(p1[0], p2[0], p3[0]));
+  const minY = Math.floor(Math.min(p1[1], p2[1], p3[1]));
+  const maxY = Math.ceil(Math.max(p1[1], p2[1], p3[1]));
+  const sign = (a, b, c) => (a[0] - c[0]) * (b[1] - c[1]) - (b[0] - c[0]) * (a[1] - c[1]);
+  for (let py = minY; py < maxY; py++) {
+    for (let px = minX; px < maxX; px++) {
+      const pt = [px + 0.5, py + 0.5];
+      const d1 = sign(pt, p1, p2), d2 = sign(pt, p2, p3), d3 = sign(pt, p3, p1);
+      const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
+      const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
+      if (!(hasNeg && hasPos)) setPixel(pixels, size, px, py, color);
+    }
+  }
+}
+
+// Card-stack + "F" mark, authored in a 120x120 design space (matches the
+// approved logo concept) and scaled to the actual icon size via U.
+function makePNG(size) {
+  const pixels = Buffer.alloc(size * size * 3);
+  const U = size / 120;
+  const paper = [0xff, 0xfb, 0xeb];  // cream backdrop
+  const line = [0xe8, 0xdc, 0xc9];   // back card
+  const base = [0xf2, 0xe6, 0xe2];   // middle card
+  const accent = [0xc2, 0x41, 0x0c]; // front card (terracotta)
+  const cream = [0xff, 0xfb, 0xeb];  // fold + "F"
+
   for (let i = 0; i < size * size; i++) {
-    pixels[i * 3] = bgColor[0];
-    pixels[i * 3 + 1] = bgColor[1];
-    pixels[i * 3 + 2] = bgColor[2];
+    pixels[i * 3] = paper[0]; pixels[i * 3 + 1] = paper[1]; pixels[i * 3 + 2] = paper[2];
   }
 
-  // Draw "FC" centered
-  const scale = Math.max(1, Math.floor(size * 0.38 / 7));
-  const glyphH = 7 * scale;
-  const glyphW = 5 * scale;
-  const gap = Math.max(1, Math.floor(scale * 1.5));
-  const textW = glyphW * 2 + gap;
-  const startX = Math.floor((size - textW) / 2);
-  const startY = Math.floor((size - glyphH) / 2);
+  fillRoundedRect(pixels, size, 20 * U, 12 * U, 56 * U, 76 * U, 10 * U, line);
+  fillRoundedRect(pixels, size, 26 * U, 18 * U, 56 * U, 76 * U, 10 * U, base);
+  fillRoundedRect(pixels, size, 32 * U, 24 * U, 56 * U, 76 * U, 10 * U, accent);
+  fillTriangle(pixels, size, [70 * U, 24 * U], [88 * U, 24 * U], [88 * U, 42 * U], cream);
 
-  drawGlyph(pixels, size, 'F', startX, startY, scale, fgColor);
-  drawGlyph(pixels, size, 'C', startX + glyphW + gap, startY, scale, fgColor);
+  const scale = Math.max(1, Math.round(20 * U / 7));
+  const glyphW = 5 * scale, glyphH = 7 * scale;
+  drawGlyph(pixels, size, 'F', Math.round(60 * U - glyphW / 2), Math.round(66 * U - glyphH / 2), scale, cream);
 
   // Build raw scanlines (filter byte 0 = None per row)
   const rowStride = size * 3 + 1;
@@ -98,9 +136,6 @@ function makePNG(size, bgColor, fgColor) {
 const iconsDir = path.join(__dirname, '../public/icons');
 if (!fs.existsSync(iconsDir)) fs.mkdirSync(iconsDir, { recursive: true });
 
-const bg = [0xc2, 0x41, 0x0c]; // #C2410C accent (terracotta)
-const fg = [0xff, 0xff, 0xff]; // white
-
-fs.writeFileSync(path.join(iconsDir, 'icon-192.png'), makePNG(192, bg, fg));
-fs.writeFileSync(path.join(iconsDir, 'icon-512.png'), makePNG(512, bg, fg));
+fs.writeFileSync(path.join(iconsDir, 'icon-192.png'), makePNG(192));
+fs.writeFileSync(path.join(iconsDir, 'icon-512.png'), makePNG(512));
 console.log('Icons generated: public/icons/icon-192.png, public/icons/icon-512.png');
