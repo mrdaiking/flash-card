@@ -484,11 +484,10 @@ async function renderDeckDetail(app, deckId) {
         </button>
       </div>
 
-      ${favoriteCount > 0 ? `
-        <button onclick="navigate('#/study/${deckId}?favorites=1')"
-          class="w-full h-11 mb-5 border border-rate-hard/40 text-rate-hard rounded-xl font-semibold text-sm hover:bg-rate-hard/10 transition-colors flex items-center justify-center gap-2">
-          ${starSVG(true)} Study Favorites (${favoriteCount})
-        </button>` : ''}
+      <button id="study-fav-btn" onclick="navigate('#/study/${deckId}?favorites=1')"
+        class="${favoriteCount > 0 ? '' : 'hidden'} w-full h-11 mb-5 border border-rate-hard/40 text-rate-hard rounded-xl font-semibold text-sm hover:bg-rate-hard/10 transition-colors flex items-center justify-center gap-2">
+        ${starSVG(true)} <span id="study-fav-count">Study Favorites (${favoriteCount})</span>
+      </button>
 
       ${cards.length === 0 ? `
         <div class="text-center py-14 text-muted">
@@ -687,7 +686,7 @@ async function toggleFavoriteInStudy() {
     btn.title = card.is_favorite ? 'Remove from favorites' : 'Add to favorites';
     if (card.is_favorite) popFavorite(btn);
   });
-  api(`/api/cards/${card.id}/favorite`, { method: 'POST', body: JSON.stringify({ favorite: !!card.is_favorite }) }).catch(() => {});
+  trackWrite(api(`/api/cards/${card.id}/favorite`, { method: 'POST', body: JSON.stringify({ favorite: !!card.is_favorite }) }).catch(() => {}));
 }
 
 function toggleFavoriteInList(cardId, btnId) {
@@ -699,6 +698,15 @@ function toggleFavoriteInList(cardId, btnId) {
   btn.innerHTML = starSVG(favorite);
   if (favorite) popFavorite(btn);
   api(`/api/cards/${cardId}/favorite`, { method: 'POST', body: JSON.stringify({ favorite }) }).catch(() => {});
+
+  // Keep the "Study Favorites" button in sync without a full re-fetch —
+  // it was previously computed once at render and never touched again.
+  const count = document.querySelectorAll('[id^="fav-btn-"][data-fav="1"]').length;
+  const favBtn = document.getElementById('study-fav-btn');
+  if (favBtn) {
+    favBtn.classList.toggle('hidden', count === 0);
+    document.getElementById('study-fav-count').textContent = `Study Favorites (${count})`;
+  }
 }
 
 function drawStudyCard() {
@@ -872,6 +880,14 @@ function typeBadge(type) {
   return `<span class="inline-block bg-accent/15 text-accent-dark text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full">${labels[type]}</span>`;
 }
 
+// Fire a study-screen write (review or favorite) without blocking the UI,
+// but track it so leaveStudy() can wait for it — otherwise whatever screen
+// you land on can still reflect the pre-write state if it hasn't landed yet.
+function trackWrite(promise) {
+  (study.pending ||= []).push(promise);
+  return promise;
+}
+
 async function rate(rating) {
   if (!study) return;
   const card = study.cards[study.index];
@@ -879,17 +895,14 @@ async function rate(rating) {
   study.index++;
   study.flipped = false;
   window.speechSynthesis?.cancel();
-  // Fire-and-forget so card-to-card feels instant, but stash the promise so
-  // leaveStudy() can wait for it — otherwise the due-count badge you land on
-  // can still reflect the pre-review state if this hasn't landed yet.
-  study.pendingReview = api(`/api/cards/${card.id}/review`, { method: 'POST', body: JSON.stringify({ rating }) }).catch(() => {});
+  trackWrite(api(`/api/cards/${card.id}/review`, { method: 'POST', body: JSON.stringify({ rating }) }).catch(() => {}));
   drawStudyCard();
 }
 
 // Leaving study (back arrow or "Back to Decks") always routes through here so
-// the deck/home due-count badges are fresh the instant they render.
+// due-count/favorite state on the screen you land on is fresh immediately.
 async function leaveStudy(hash) {
-  await study?.pendingReview;
+  await Promise.all(study?.pending || []);
   navigate(hash);
 }
 
