@@ -1,4 +1,4 @@
-const CACHE = 'felix-cards-v19';
+const CACHE = 'felix-cards-v20';
 const SYNC_TAG = 'review-sync';
 const IDB_NAME = 'felix-cards-sw';
 const IDB_STORE = 'pending-reviews';
@@ -95,18 +95,19 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Stale-while-revalidate for GET API endpoints used offline
+  // Network-first (falling back to cache only when offline) for GET API
+  // endpoints that back due-count badges. Stale-while-revalidate used to
+  // serve an already-cached response even when a mutation (delete a deck,
+  // rate a card, favorite a card) had just changed that data — the app
+  // looked out of date until a second, later fetch picked up the
+  // background-revalidated cache. Network-first still works offline via
+  // the cache fallback, but never prefers stale data while online.
   if (request.method === 'GET' && ['/api/decks', '/api/cards/due'].includes(url.pathname)) {
     e.respondWith(
-      caches.open(CACHE).then(cache =>
-        cache.match(request).then(cached => {
-          const fresh = fetch(request).then(res => {
-            cache.put(request, res.clone());
-            return res;
-          });
-          return cached || fresh;
-        })
-      )
+      fetch(request).then(res => {
+        e.waitUntil(caches.open(CACHE).then(cache => cache.put(request, res.clone())));
+        return res;
+      }).catch(() => caches.match(request))
     );
     return;
   }
