@@ -236,6 +236,11 @@ function router() {
   const app = document.getElementById('app');
   let m;
 
+  // Study is a full-screen, one-handed flow with its own back button —
+  // the bottom nav would only eat into the vertical space we need for
+  // the pinned rating bar, so it's hidden for that route only.
+  document.getElementById('bottom-nav').classList.toggle('hidden', hash.startsWith('#/study/'));
+
   if (hash === '#/' || hash === '') {
     setActiveNav('');
     renderHome(app);
@@ -243,7 +248,6 @@ function router() {
     setActiveNav('');
     renderDeckDetail(app, m[1]);
   } else if ((m = hash.match(/^#\/study\/([\w]+)/))) {
-    setActiveNav('study');
     const params = new URLSearchParams(hash.split('?')[1] || '');
     renderStudy(app, m[1], params.get('favorites') === '1');
   } else if ((m = hash.match(/^#\/cards\/new/))) {
@@ -725,7 +729,7 @@ function drawStudyCard() {
   const backSpeak = card.example ? `${card.back}. ${card.example}` : card.back;
 
   app.innerHTML = `
-    <div class="flex flex-col min-h-screen p-4 pt-5">
+    <div class="flex flex-col min-h-screen p-4 pt-5 pb-32">
       <!-- Progress bar -->
       <div class="flex items-center gap-3 mb-5">
         <button onclick="navigate('${backHash}')"
@@ -794,28 +798,30 @@ function drawStudyCard() {
         </div>
       </div>
 
-      <!-- Rating buttons -->
-      <div id="rating-btns" class="${flipped ? '' : 'invisible'} grid grid-cols-2 gap-2 mt-5">
-        <button onclick="rate(1)"
-          class="h-14 bg-rate-again/10 border border-rate-again/40 rounded-xl text-rate-again font-semibold hover:bg-rate-again/20 active:scale-95 transition-all text-sm">
-          Again
-        </button>
-        <button onclick="rate(2)"
-          class="h-14 bg-rate-hard/10 border border-rate-hard/40 rounded-xl text-rate-hard font-semibold hover:bg-rate-hard/20 active:scale-95 transition-all text-sm">
-          Hard
-        </button>
-        <button onclick="rate(3)"
-          class="h-16 bg-rate-good/10 border border-rate-good/40 rounded-xl text-rate-good font-semibold hover:bg-rate-good/20 active:scale-95 transition-all text-base">
-          Good
-        </button>
-        <button onclick="rate(4)"
-          class="h-16 bg-rate-easy/10 border border-rate-easy/40 rounded-xl text-rate-easy font-semibold hover:bg-rate-easy/20 active:scale-95 transition-all text-base">
-          Easy
-        </button>
-      </div>
-
       ${!flipped ? `
         <p class="text-center text-muted text-xs mt-4">swipe left = Again &nbsp;·&nbsp; swipe right = Easy</p>` : ''}
+    </div>
+
+    <!-- Rating buttons: pinned to the bottom of the viewport so they're always
+         reachable without scrolling, no matter how long the card content is. -->
+    <div id="rating-btns" class="${flipped ? '' : 'invisible'} fixed bottom-0 left-0 right-0 z-30 bg-paper/95 backdrop-blur border-t border-line/60 px-4 pt-3 safe-bottom grid grid-cols-2 gap-2">
+      <button onclick="rate(1)"
+        class="h-14 bg-rate-again/10 border border-rate-again/40 rounded-xl text-rate-again font-semibold hover:bg-rate-again/20 active:scale-95 transition-all text-sm">
+        Again
+      </button>
+      <button onclick="rate(2)"
+        class="h-14 bg-rate-hard/10 border border-rate-hard/40 rounded-xl text-rate-hard font-semibold hover:bg-rate-hard/20 active:scale-95 transition-all text-sm">
+        Hard
+      </button>
+      <button onclick="rate(3)"
+        class="h-14 bg-rate-good/10 border border-rate-good/40 rounded-xl text-rate-good font-semibold hover:bg-rate-good/20 active:scale-95 transition-all text-sm">
+        Good
+      </button>
+      <button onclick="rate(4)"
+        class="h-14 bg-rate-easy/10 border border-rate-easy/40 rounded-xl text-rate-easy font-semibold hover:bg-rate-easy/20 active:scale-95 transition-all text-sm">
+        Easy
+      </button>
+      <div class="col-span-2 h-3"></div>
     </div>
   `;
 
