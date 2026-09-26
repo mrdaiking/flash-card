@@ -133,6 +133,13 @@ function stripHtml(html) {
   return tmp.textContent || tmp.innerText || '';
 }
 
+// Plain-text preview for compact list rows: renders markdown then strips it
+// back to text, so embedded images/formatting never leak into a one-line
+// preview as raw syntax (a pasted image's data URL is thousands of chars).
+function previewText(source) {
+  return stripHtml(md(source)).trim() || '🖼 Image';
+}
+
 function speak(text) {
   if (!ttsEnabled || !window.speechSynthesis) return;
   window.speechSynthesis.cancel();
@@ -489,8 +496,8 @@ async function renderDeckDetail(app, deckId) {
           ${cards.map(c => `
             <div class="bg-surface rounded-xl p-4 flex items-center gap-3">
               <div class="flex-1 min-w-0">
-                <p class="text-ink truncate text-sm font-medium">${escHtml(c.front)}</p>
-                <p class="text-muted text-xs truncate mt-0.5">${escHtml(c.back)}</p>
+                <p class="text-ink truncate text-sm font-medium">${escHtml(previewText(c.front))}</p>
+                <p class="text-muted text-xs truncate mt-0.5">${escHtml(previewText(c.back))}</p>
               </div>
               <div class="flex gap-1 flex-shrink-0">
                 <button id="fav-btn-${c.id}" data-fav="${c.is_favorite ? '1' : '0'}" onclick="toggleFavoriteInList(${c.id}, 'fav-btn-${c.id}')"
@@ -1396,7 +1403,7 @@ async function renderJournal(app) {
                 <span class="text-xs font-semibold text-accent uppercase tracking-wider">${fmtDate(e.created_at)}</span>
                 ${e.correction ? '<span class="text-[10px] text-rate-easy bg-rate-easy/10 px-2 py-0.5 rounded-full">corrected</span>' : '<span class="text-[10px] text-muted bg-line/50 px-2 py-0.5 rounded-full">draft</span>'}
               </div>
-              <p class="text-ink/80 text-sm line-clamp-3 whitespace-pre-wrap">${escHtml(e.content).slice(0, 240)}</p>
+              <p class="text-ink/80 text-sm line-clamp-3 whitespace-pre-wrap break-words">${escHtml(e.content).slice(0, 240)}</p>
               ${e.words ? `<p class="text-xs text-muted mt-2">words: ${escHtml(e.words)}</p>` : ''}
             </div>`).join('')}
         </div>`}
@@ -1530,9 +1537,9 @@ async function renderRecap(app) {
         <p class="text-muted text-sm mb-6">No new words added this week.</p>` : `
         <div class="space-y-2 mb-6">
           ${recap.new_words.map(w => `
-            <div class="bg-surface rounded-xl p-3 flex items-center justify-between">
-              <span class="text-ink text-sm font-medium">${escHtml(w.front)}</span>
-              <div class="flex items-center gap-2">
+            <div class="bg-surface rounded-xl p-3 flex items-center gap-3">
+              <span class="text-ink text-sm font-medium truncate flex-1 min-w-0">${escHtml(previewText(w.front))}</span>
+              <div class="flex items-center gap-2 flex-shrink-0">
                 ${typeBadge(w.type)}
                 <span class="text-xs text-muted">${fmtDate(w.created_at)}</span>
               </div>
@@ -1550,7 +1557,7 @@ async function renderRecap(app) {
                 <span class="text-xs text-accent">${fmtDate(e.created_at)}</span>
                 ${e.correction ? '<span class="text-[10px] text-rate-easy">✓ corrected</span>' : ''}
               </div>
-              <p class="text-ink/80 text-sm line-clamp-2 whitespace-pre-wrap">${escHtml(e.content).slice(0, 160)}</p>
+              <p class="text-ink/80 text-sm line-clamp-2 whitespace-pre-wrap break-words">${escHtml(e.content).slice(0, 160)}</p>
             </div>`).join('')}
         </div>`}
     </div>
