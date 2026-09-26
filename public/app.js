@@ -258,6 +258,9 @@ function router() {
   } else if ((m = hash.match(/^#\/decks\/(\d+)$/))) {
     setActiveNav('');
     renderDeckDetail(app, m[1]);
+  } else if ((m = hash.match(/^#\/decks\/(\d+)\/import$/))) {
+    setActiveNav('');
+    renderImport(app, m[1]);
   } else if ((m = hash.match(/^#\/study\/([\w]+)/))) {
     const params = new URLSearchParams(hash.split('?')[1] || '');
     renderStudy(app, m[1], params.get('favorites') === '1');
@@ -293,6 +296,12 @@ window.addEventListener('hashchange', router);
 window.addEventListener('load', () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(console.error);
+    // iOS has no Background Sync: ask the SW to send offline-queued reviews
+    // whenever there's a chance we're back online.
+    const flushReviews = () => navigator.serviceWorker.ready.then(r => r.active?.postMessage('replay-reviews'));
+    flushReviews();
+    window.addEventListener('online', flushReviews);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') flushReviews(); });
   }
   if (token) { hideAuth(); router(); } else { showAuth(); }
 });
@@ -305,7 +314,7 @@ function escHtml(s) {
 }
 
 // Generic animated show/hide for the app's bottom-sheet/centered modals
-// (new-deck-modal, deck-menu, rename-modal, import-modal). The slide/fade
+// (new-deck-modal, deck-menu, rename-modal). The slide/fade
 // itself is pure CSS (index.html), gated behind prefers-reduced-motion;
 // these just sequence the class toggles so the transition has something
 // to animate from.
@@ -478,7 +487,7 @@ async function renderDeckDetail(app, deckId) {
           class="h-12 px-4 border border-line rounded-xl text-ink/80 hover:text-ink hover:border-accent/50 transition-colors whitespace-nowrap">
           + Add
         </button>
-        <button onclick="showImportModal()"
+        <button onclick="navigate('#/decks/${deckId}/import')"
           class="h-12 px-4 border border-line rounded-xl text-ink/80 hover:text-ink hover:border-accent/50 transition-colors">
           Import
         </button>
@@ -540,6 +549,19 @@ async function renderDeckDetail(app, deckId) {
           </svg>
           Rename Deck
         </button>
+        <label class="w-full min-h-12 flex items-center gap-3 px-4 py-2 rounded-xl text-ink/80">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+          <span class="flex-1">
+            Target retention
+            <span id="retention-hint" class="block text-xs text-muted">Higher = remember more, review more often</span>
+          </span>
+          <select onchange="saveRetention(${deckId}, this.value)"
+            class="h-10 bg-base border border-line rounded-lg px-2 text-ink text-sm focus:outline-none focus:border-accent">
+            ${[0.8, 0.85, 0.9, 0.95].map(r => `<option value="${r}"${Math.abs(r - deck.target_retention) < 1e-9 ? ' selected' : ''}>${Math.round(r * 100)}%</option>`).join('')}
+          </select>
+        </label>
         <button onclick="deleteDeck(${deckId})"
           class="w-full h-12 flex items-center gap-3 px-4 rounded-xl text-rate-again hover:text-rate-again hover:bg-base transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -565,22 +587,6 @@ async function renderDeckDetail(app, deckId) {
       </div>
     </div>
 
-    <!-- Import Modal -->
-    <div id="import-modal" class="hidden fixed inset-0 bg-black/70 flex items-end justify-center z-50 p-4" onclick="hideImportModal(event)">
-      <div class="bg-surface rounded-2xl p-6 w-full max-w-sm mb-2" onclick="event.stopPropagation()">
-        <h2 class="text-lg font-semibold text-ink mb-1 font-heading">Import Cards</h2>
-        <p class="text-muted text-sm mb-3">One per line: <code class="text-accent bg-base px-1 rounded">front | back</code></p>
-        <textarea id="import-text" rows="7"
-          placeholder="apple | A red or green fruit&#10;hello | A greeting"
-          class="w-full bg-base border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent mb-4 resize-none text-sm font-mono"></textarea>
-        <div class="flex gap-3">
-          <button onclick="hideImportModal()"
-            class="flex-1 h-12 border border-line rounded-xl text-muted hover:text-ink transition-colors">Cancel</button>
-          <button onclick="doImport(${deckId})"
-            class="flex-1 h-12 bg-accent hover:bg-accent-dark rounded-xl text-on-accent font-semibold transition-colors">Import</button>
-        </div>
-      </div>
-    </div>
   `;
 }
 
@@ -601,6 +607,11 @@ async function renameDeck(deckId) {
   hideRenameModal();
   renderDeckDetail(document.getElementById('app'), deckId);
 }
+async function saveRetention(deckId, value) {
+  const hint = document.getElementById('retention-hint');
+  const res = await api(`/api/decks/${deckId}/retention`, { method: 'PUT', body: JSON.stringify({ targetRetention: Number(value) }) });
+  if (hint) hint.textContent = res ? `Saved — applies from each card's next review` : 'Could not save';
+}
 async function deleteDeck(deckId) {
   hideDeckMenu();
   if (!confirm('Delete this deck and all its cards? This cannot be undone.')) return;
@@ -612,23 +623,200 @@ async function deleteCard(cardId, deckId) {
   await api(`/api/cards/${cardId}`, { method: 'DELETE' });
   renderDeckDetail(document.getElementById('app'), deckId);
 }
-function showImportModal() { showModal('import-modal'); }
-function hideImportModal(e) {
-  if (!e || e.target === document.getElementById('import-modal')) hideModalEl('import-modal');
+/* ════════════════════════════════════════
+   Screen: Import (CSV / TSV / "front | back")
+   upload or paste → map columns → review rows (fix inline) → choose pacing → import
+════════════════════════════════════════ */
+let imp = null;
+const HEADER_NAMES = ['front', 'back', 'example', 'question', 'answer', 'term', 'definition'];
+const SPREAD_OPTIONS = [[0, 'All due now'], [7, 'Spread over 1 week'], [14, 'Spread over 2 weeks'], [28, 'Spread over 4 weeks']];
+
+async function renderImport(app, deckId) {
+  loading(app);
+  const [decks, cards] = await Promise.all([api('/api/decks'), api(`/api/decks/${deckId}/cards`)]);
+  if (!decks || !cards) return;
+  const deck = decks.find(d => d.id == deckId);
+  if (!deck) { navigate('#/'); return; }
+
+  imp = { deckId, existing: new Set(cards.map(c => CSV.dedupKey(c.front))), table: [], width: 0, header: false, map: {}, rows: [], spreadDays: 0, onlyFlagged: false };
+
+  app.innerHTML = `
+    <div class="p-4 pt-6">
+      <div class="flex items-center gap-2 mb-5">
+        <button onclick="navigate('#/decks/${deckId}')"
+          class="w-10 h-10 flex items-center justify-center text-muted hover:text-ink transition-colors -ml-2 flex-shrink-0">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </button>
+        <div class="flex-1 min-w-0">
+          <h1 class="text-xl font-bold text-ink font-heading">Import Cards</h1>
+          <p class="text-sm text-muted truncate">into ${escHtml(deck.name)}</p>
+        </div>
+      </div>
+
+      <p class="text-sm text-muted mb-3">A CSV/TSV file, or one card per line as <code class="text-accent bg-base px-1 rounded">front | back</code>.</p>
+      <label class="flex items-center justify-center h-12 border border-dashed border-line rounded-xl text-ink/80 hover:border-accent/50 cursor-pointer mb-3">
+        <input type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" class="hidden" onchange="impLoadFile(this)">
+        Choose a file…
+      </label>
+      <textarea id="imp-paste" rows="4" placeholder="…or paste here"
+        class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink text-sm font-mono focus:outline-none focus:border-accent resize-y"></textarea>
+      <button onclick="impLoadText(document.getElementById('imp-paste').value)"
+        class="w-full h-11 mt-2 border border-line rounded-xl text-ink/80 hover:text-ink hover:border-accent/50 transition-colors">Preview pasted text</button>
+
+      <div id="imp-body" class="mt-6"></div>
+    </div>
+  `;
 }
-async function doImport(deckId) {
-  const text = document.getElementById('import-text').value;
-  const res = await fetch(`/api/decks/${deckId}/import`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'text/plain' },
-    body: text,
-  });
-  if (res.ok) {
-    const data = await res.json();
-    hideImportModal();
-    alert(`Imported ${data.imported} card${data.imported !== 1 ? 's' : ''}`);
-    renderDeckDetail(document.getElementById('app'), deckId);
+
+function impLoadFile(input) {
+  const file = input.files[0];
+  if (file) file.text().then(impLoadText);
+}
+
+function impLoadText(text) {
+  text = text.replace(/^﻿/, '');
+  imp.table = CSV.parseDelimited(text, CSV.detectDelimiter(text));
+  if (!imp.table.length) {
+    document.getElementById('imp-body').innerHTML = '<p class="text-muted text-sm text-center py-6">Nothing to import.</p>';
+    return;
   }
+  imp.width = Math.max(...imp.table.map(r => r.length));
+  const first = imp.table[0].map(c => c.trim().toLowerCase());
+  const find = (...names) => first.findIndex(c => names.includes(c));
+  imp.header = first.some(c => HEADER_NAMES.includes(c));
+  const back = imp.header ? find('back', 'answer', 'definition') : -1;
+  imp.map = {
+    front: imp.header ? Math.max(0, find('front', 'question', 'term')) : 0,
+    back: back >= 0 ? back : Math.min(1, imp.width - 1),
+    example: imp.header ? find('example') : (imp.width > 2 ? 2 : -1),
+  };
+  impBuildRows();
+  imp.spreadDays = imp.rows.length > 30 ? 14 : 0;
+  impRender();
+}
+
+// Rebuilds rows from the raw table using the current header/mapping choices.
+function impBuildRows() {
+  const cell = (r, i) => (i >= 0 ? (r[i] || '').trim() : '');
+  imp.rows = imp.table.slice(imp.header ? 1 : 0).map(r => ({
+    front: cell(r, imp.map.front), back: cell(r, imp.map.back), example: cell(r, imp.map.example), skip: false,
+  }));
+  impValidate();
+}
+
+function impValidate() {
+  const seen = new Set();
+  for (const r of imp.rows) {
+    const key = CSV.dedupKey(r.front);
+    r.error = !r.front || !r.back ? 'Missing front or back' : '';
+    r.dup = !r.error && (imp.existing.has(key) ? 'Already in this deck' : seen.has(key) ? 'Duplicate in file' : '');
+    if (!r.error) seen.add(key);
+    r.warn = r.error ? [] : CSV.ideaWarnings(r.front, r.back);
+  }
+}
+
+const impIncluded = r => !r.error && !r.dup && !r.skip;
+
+function impRender() {
+  const label = i => (imp.header && imp.table[0][i]?.trim()) || `Column ${i + 1}`;
+  const options = (sel, optional) =>
+    (optional ? `<option value="-1"${sel < 0 ? ' selected' : ''}>— none —</option>` : '') +
+    Array.from({ length: imp.width }, (_, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${escHtml(label(i))}</option>`).join('');
+  const select = (field, optional) => `
+    <label class="block">
+      <span class="text-xs font-semibold text-muted uppercase tracking-wider">${field}${optional ? ' (optional)' : ''}</span>
+      <select onchange="imp.map.${field} = +this.value; impBuildRows(); impRender()"
+        class="mt-1 w-full h-11 bg-surface border border-line rounded-xl px-3 text-ink text-sm focus:outline-none focus:border-accent">${options(imp.map[field], optional)}</select>
+    </label>`;
+
+  document.getElementById('imp-body').innerHTML = `
+    <h2 class="text-sm font-semibold text-muted uppercase tracking-wider mb-3">Columns</h2>
+    <label class="flex items-center gap-2 text-sm text-ink mb-3">
+      <input type="checkbox" class="w-4 h-4 accent-accent" ${imp.header ? 'checked' : ''} onchange="imp.header = this.checked; impBuildRows(); impRender()">
+      First row is a header
+    </label>
+    <div class="grid grid-cols-3 gap-2 mb-6">${select('front')}${select('back')}${select('example', true)}</div>
+    <div id="imp-review"></div>
+  `;
+  impRenderReview();
+}
+
+function impRenderReview() {
+  const rows = imp.rows;
+  const ready = rows.filter(impIncluded).length;
+  const nWarn = rows.filter(r => impIncluded(r) && r.warn.length).length;
+  const nDup = rows.filter(r => r.dup).length;
+  const nBad = rows.filter(r => r.error).length;
+  const perDay = imp.spreadDays ? Math.ceil(ready / imp.spreadDays) : ready;
+  const shown = rows.map((r, i) => [r, i]).filter(([r]) => !imp.onlyFlagged || r.error || r.dup || r.warn.length);
+  const chip = (cls, text) => `<span class="text-[11px] px-2 py-0.5 rounded-full ${cls}">${text}</span>`;
+
+  document.getElementById('imp-review').innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold text-muted uppercase tracking-wider">Review · ${ready} of ${rows.length}</h2>
+      <label class="flex items-center gap-2 text-xs text-muted">
+        <input type="checkbox" class="accent-accent" ${imp.onlyFlagged ? 'checked' : ''} onchange="imp.onlyFlagged = this.checked; impRenderReview()">
+        Flagged only
+      </label>
+    </div>
+    <div class="flex flex-wrap gap-2 mb-3">
+      ${nWarn ? chip('bg-rate-hard/10 text-rate-hard', `${nWarn} to double-check`) : ''}
+      ${nDup ? chip('bg-line/60 text-muted', `${nDup} duplicate${nDup > 1 ? 's' : ''} skipped`) : ''}
+      ${nBad ? chip('bg-rate-again/10 text-rate-again', `${nBad} incomplete`) : ''}
+    </div>
+
+    <div class="space-y-2 mb-6">
+      ${shown.length === 0 ? '<p class="text-muted text-sm text-center py-6">Nothing flagged.</p>' : shown.map(([r, i]) => `
+        <div class="bg-surface rounded-xl p-3 border ${r.error ? 'border-rate-again/40' : r.dup ? 'border-line opacity-60' : r.warn.length ? 'border-rate-hard/40' : 'border-transparent'}">
+          <div class="flex items-start gap-3">
+            <input type="checkbox" class="mt-2.5 w-5 h-5 accent-accent flex-shrink-0" ${impIncluded(r) ? 'checked' : ''} ${r.error || r.dup ? 'disabled' : ''}
+              onchange="imp.rows[${i}].skip = !this.checked; impRenderReview()">
+            <div class="flex-1 min-w-0 space-y-1.5">
+              <textarea rows="1" placeholder="Front" onchange="impEdit(${i}, 'front', this.value)"
+                class="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-ink font-medium resize-y focus:outline-none focus:border-accent">${escHtml(r.front)}</textarea>
+              <textarea rows="1" placeholder="Back" onchange="impEdit(${i}, 'back', this.value)"
+                class="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-ink resize-y focus:outline-none focus:border-accent">${escHtml(r.back)}</textarea>
+              ${r.example ? `<p class="text-xs text-muted italic truncate">${escHtml(previewParts(r.example).text)}</p>` : ''}
+              ${r.error || r.dup || r.warn.length ? `<div class="flex flex-wrap gap-1.5">
+                ${r.error ? chip('bg-rate-again/10 text-rate-again', r.error) : ''}
+                ${r.dup ? chip('bg-line/60 text-muted', r.dup) : ''}
+                ${r.warn.map(w => chip('bg-rate-hard/10 text-rate-hard', w)).join('')}
+              </div>` : ''}
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>
+
+    <h2 class="text-sm font-semibold text-muted uppercase tracking-wider mb-2">Pacing</h2>
+    <select onchange="imp.spreadDays = +this.value; impRenderReview()"
+      class="w-full h-11 bg-surface border border-line rounded-xl px-3 text-ink text-sm focus:outline-none focus:border-accent">
+      ${SPREAD_OPTIONS.map(([d, l]) => `<option value="${d}"${d === imp.spreadDays ? ' selected' : ''}>${l}</option>`).join('')}
+    </select>
+    <p class="text-xs text-muted mt-1.5 mb-6">${imp.spreadDays ? `≈ ${perDay} new card${perDay !== 1 ? 's' : ''} per day, so a big import doesn't pile up as one backlog.` : 'Every imported card is due right away.'}</p>
+
+    <button id="imp-submit" onclick="impSubmit()" ${ready ? '' : 'disabled'}
+      class="w-full h-12 rounded-xl font-semibold transition-colors ${ready ? 'bg-accent hover:bg-accent-dark text-on-accent' : 'bg-surface text-muted cursor-not-allowed'}">
+      Import ${ready} card${ready !== 1 ? 's' : ''}
+    </button>
+  `;
+}
+
+function impEdit(i, field, value) {
+  imp.rows[i][field] = value.trim();
+  impValidate();
+  impRenderReview();
+}
+
+async function impSubmit() {
+  const btn = document.getElementById('imp-submit');
+  btn.disabled = true;
+  btn.textContent = 'Importing…';
+  const rows = imp.rows.filter(impIncluded).map(({ front, back, example }) => ({ front, back, example }));
+  const res = await api(`/api/decks/${imp.deckId}/import-rows`, { method: 'POST', body: JSON.stringify({ rows, spreadDays: imp.spreadDays }) });
+  if (res) navigate(`#/decks/${imp.deckId}`);
+  else { btn.disabled = false; btn.textContent = 'Import failed — try again'; }
 }
 
 /* ════════════════════════════════════════
@@ -640,9 +828,12 @@ async function renderStudy(app, deckId, favoritesOnly = false) {
   app.innerHTML = `<div class="flex items-center justify-center h-64 text-muted">Loading cards...</div>`;
   const url = favoritesOnly
     ? (deckId === 'all' ? '/api/cards/favorites' : `/api/decks/${deckId}/favorites`)
-    : (deckId === 'all' ? '/api/cards/due' : `/api/decks/${deckId}/due`);
-  const cards = await api(url);
+    : (deckId === 'all' ? '/api/cards/due?ahead=3' : `/api/decks/${deckId}/due?ahead=3`);
+  let cards = await api(url);
   if (!cards) return;
+  // The list includes the next 3 days so the SW's cached copy stays useful
+  // offline; what's actually due is decided by this device's clock.
+  if (!favoritesOnly) cards = cards.filter(c => c.next_review <= Date.now());
 
   if (cards.length === 0) {
     app.innerHTML = `
@@ -895,7 +1086,7 @@ async function rate(rating) {
   study.index++;
   study.flipped = false;
   window.speechSynthesis?.cancel();
-  trackWrite(api(`/api/cards/${card.id}/review`, { method: 'POST', body: JSON.stringify({ rating }) }).catch(() => {}));
+  trackWrite(api(`/api/cards/${card.id}/review`, { method: 'POST', body: JSON.stringify({ rating, at: Date.now() }) }).catch(() => {}));
   drawStudyCard();
 }
 
@@ -1096,10 +1287,17 @@ async function saveCard(cardId, deckId) {
   btn.textContent = 'Saving...';
 
   const payload = JSON.stringify({ front, back, example, type });
-  if (cardId) {
-    await api(`/api/cards/${cardId}`, { method: 'PUT', body: payload });
-  } else {
-    await api(`/api/decks/${deckId}/cards`, { method: 'POST', body: payload });
+  try {
+    if (cardId) {
+      await api(`/api/cards/${cardId}`, { method: 'PUT', body: payload });
+    } else {
+      await api(`/api/decks/${deckId}/cards`, { method: 'POST', body: payload });
+    }
+  } catch {
+    // Offline: not queued (by design) — say so and keep what was typed.
+    btn.disabled = false;
+    btn.textContent = 'Offline — not saved. Tap to retry';
+    return;
   }
   navigate(deckId ? `#/decks/${deckId}` : '#/');
 }
@@ -1179,6 +1377,21 @@ async function renderStats(app) {
           <input id="reminder-time" type="time" onchange="saveReminderTime()"
             class="bg-base border border-line rounded-lg px-3 h-10 text-ink focus:outline-none focus:border-accent" />
         </label>
+        <label class="flex items-center justify-between gap-3 mt-3">
+          <span class="text-sm text-muted">Nudge me about a deck untouched for</span>
+          <span class="flex items-center gap-2 flex-shrink-0">
+            <input id="silence-days" type="number" min="1" max="365" inputmode="numeric" onchange="saveSilenceDays()"
+              class="w-16 bg-base border border-line rounded-lg px-2 h-10 text-ink text-center focus:outline-none focus:border-accent" />
+            <span class="text-sm text-muted">days</span>
+          </span>
+        </label>
+        <button onclick="sendTestSilence()" class="mt-2 text-xs text-accent hover:text-accent-dark">Test quiet-deck nudge</button>
+        <label class="flex items-center justify-between gap-3 mt-4 pt-4 border-t border-line">
+          <span class="text-sm text-muted">End-of-day email digest</span>
+          <input id="digest-time" type="time" onchange="saveDigestTime()"
+            class="bg-base border border-line rounded-lg px-3 h-10 text-ink focus:outline-none focus:border-accent" />
+        </label>
+        <button onclick="sendTestDigest()" class="mt-2 text-xs text-accent hover:text-accent-dark">Send test email</button>
         <p id="push-status" class="text-xs text-muted mt-2"></p>
       </div>
 
@@ -1191,6 +1404,14 @@ async function renderStats(app) {
   if (weekly) renderWeeklyChart(weekly);
   updatePushButton();
   loadReminderTime();
+  api('/api/settings/silence').then(s => {
+    const el = document.getElementById('silence-days');
+    if (el && s) el.value = s.thresholdDays;
+  });
+  api('/api/settings/digest').then(s => {
+    const el = document.getElementById('digest-time');
+    if (el && s) el.value = utcToLocalTimeStr(s.hour, s.minute);
+  });
   updateThemeButtons();
   api('/api/version').then(v => {
     const el = document.getElementById('app-version');
@@ -1286,6 +1507,40 @@ async function enablePush() {
   } catch (err) {
     status.textContent = `Failed: ${err.message}`;
   }
+}
+
+async function saveSilenceDays() {
+  const input = document.getElementById('silence-days');
+  const status = document.getElementById('push-status');
+  const res = await api('/api/settings/silence', { method: 'PUT', body: JSON.stringify({ thresholdDays: Number(input.value) }) });
+  if (status) status.textContent = res?.thresholdDays ? `You'll be nudged about decks untouched for ${res.thresholdDays} days.` : 'Enter a number of days between 1 and 365.';
+}
+
+async function sendTestSilence() {
+  const status = document.getElementById('push-status');
+  status.textContent = 'Checking…';
+  const r = await api('/api/push/test-silence', { method: 'POST' });
+  if (!r) { status.textContent = 'Failed to send.'; return; }
+  status.textContent = r.decks.length
+    ? `Quiet: ${r.decks.map(d => `${d.name} (${d.quietDays}d)`).join(', ')} — sent to ${r.sent}/${r.total} device(s).`
+    : 'No deck is quiet past the threshold right now.';
+}
+
+async function saveDigestTime() {
+  const input = document.getElementById('digest-time');
+  const status = document.getElementById('push-status');
+  const { hour, minute } = localTimeStrToUtc(input.value);
+  await api('/api/settings/digest', { method: 'PUT', body: JSON.stringify({ hour, minute }) });
+  if (status) status.textContent = `Digest email set for ${input.value} your time.`;
+}
+
+async function sendTestDigest() {
+  const status = document.getElementById('push-status');
+  status.textContent = 'Sending…';
+  try {
+    const r = await api('/api/digest/test', { method: 'POST' });
+    status.textContent = r?.sent ? `Digest sent to ${r.to}.` : (r?.reason || 'Failed to send.');
+  } catch { status.textContent = 'Failed to send.'; }
 }
 
 async function sendTestPush() {
@@ -1516,10 +1771,16 @@ async function saveJournal(entryId) {
   btn.textContent = 'Saving...';
 
   const payload = JSON.stringify({ content, correction, words });
-  if (entryId) {
-    await api(`/api/journal/${entryId}`, { method: 'PUT', body: payload });
-  } else {
-    await api('/api/journal', { method: 'POST', body: payload });
+  try {
+    if (entryId) {
+      await api(`/api/journal/${entryId}`, { method: 'PUT', body: payload });
+    } else {
+      await api('/api/journal', { method: 'POST', body: payload });
+    }
+  } catch {
+    btn.disabled = false;
+    btn.textContent = 'Offline — not saved. Tap to retry';
+    return;
   }
   navigate('#/journal');
 }

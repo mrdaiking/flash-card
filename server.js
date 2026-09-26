@@ -5,7 +5,6 @@ const { execSync } = require('child_process');
 
 const app = express();
 app.use(express.json({ limit: '8mb' }));
-app.use(express.text({ type: 'text/plain' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const auth = require('./middleware/auth');
@@ -22,6 +21,9 @@ app.use('/api', auth, require('./routes/journal'));
 const pushRoutes = require('./routes/push');
 app.use('/api', auth, pushRoutes);
 pushRoutes.scheduleDailyReminder();
+const digestRoutes = require('./routes/digest');
+app.use('/api', auth, digestRoutes);
+digestRoutes.scheduleDigest();
 
 // SPA fallback
 app.get('*', (req, res) => {

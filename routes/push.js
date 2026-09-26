@@ -74,8 +74,74 @@ async function sendDueReminder() {
   });
 }
 
+// ── Domain-silence reminder ──
+// Targets the "forgot this deck exists" failure, not missed due cards: a deck
+// is silent when its latest activity (newest review of any of its cards, or
+// newest card added) is older than the threshold, due cards or not. Empty
+// decks are excluded. After a nudge, the same deck isn't nudged again for
+// renotify_days. Independent of sendDueReminder.
+const DAY = 86400000;
+
+function silentDecks({ ignoreRenotify = false } = {}) {
+  const now = Date.now();
+  const { silence_threshold_days, renotify_days } =
+    db.prepare('SELECT silence_threshold_days, renotify_days FROM settings WHERE id = 1').get();
+  return db.prepare(`
+    SELECT d.id, d.name, d.silence_notified_at,
+      MAX(COALESCE(MAX(r.reviewed_at), 0), MAX(c.created_at)) * 1000 AS last_activity
+    FROM decks d
+    JOIN cards c ON c.deck_id = d.id
+    LEFT JOIN reviews r ON r.card_id = c.id
+    GROUP BY d.id
+  `).all()
+    .filter(d => now - d.last_activity > silence_threshold_days * DAY)
+    .filter(d => ignoreRenotify || !d.silence_notified_at || now - d.silence_notified_at > renotify_days * DAY)
+    .map(d => ({ id: d.id, name: d.name, quietDays: Math.floor((now - d.last_activity) / DAY) }))
+    .sort((a, b) => b.quietDays - a.quietDays);
+}
+
+function silencePush(decks) {
+  const body = decks.length === 1
+    ? `You haven't touched ${decks[0].name} in ${decks[0].quietDays} days.`
+    : `Quiet for a while: ${decks.slice(0, 3).map(d => `${d.name} (${d.quietDays}d)`).join(', ')}` +
+      (decks.length > 3 ? ` +${decks.length - 3} more` : '');
+  return { title: 'Still learning these?', body };
+}
+
+async function sendSilenceReminder() {
+  const decks = silentDecks();
+  if (!decks.length) return;
+  await broadcastPush(silencePush(decks));
+  const mark = db.prepare('UPDATE decks SET silence_notified_at = ? WHERE id = ?');
+  const now = Date.now();
+  db.transaction(() => decks.forEach(d => mark.run(now, d.id)))();
+}
+
+router.get('/settings/silence', (req, res) => {
+  const s = db.prepare('SELECT silence_threshold_days, renotify_days FROM settings WHERE id = 1').get();
+  res.json({ thresholdDays: s.silence_threshold_days, renotifyDays: s.renotify_days });
+});
+
+router.put('/settings/silence', (req, res) => {
+  const s = db.prepare('SELECT silence_threshold_days, renotify_days FROM settings WHERE id = 1').get();
+  const thresholdDays = req.body.thresholdDays ?? s.silence_threshold_days;
+  const renotifyDays = req.body.renotifyDays ?? s.renotify_days;
+  const ok = n => Number.isInteger(n) && n >= 1 && n <= 365;
+  if (!ok(thresholdDays) || !ok(renotifyDays)) return res.status(400).json({ error: 'thresholdDays and renotifyDays must be whole days, 1-365' });
+  db.prepare('UPDATE settings SET silence_threshold_days = ?, renotify_days = ? WHERE id = 1').run(thresholdDays, renotifyDays);
+  res.json({ thresholdDays, renotifyDays });
+});
+
+// Manual test: uses the threshold but ignores (and doesn't update) the re-nudge throttle.
+router.post('/push/test-silence', async (req, res) => {
+  const decks = silentDecks({ ignoreRenotify: true });
+  if (!decks.length) return res.json({ decks, sent: 0, total: 0 });
+  res.json({ decks, ...(await broadcastPush(silencePush(decks))) });
+});
+
 // Checked once a minute; fires at most once per UTC calendar day, at the
 // user-configured reminder_hour/reminder_minute (settings table, editable via PUT /settings/reminder).
+// The due and silence reminders share the slot but run (and fail) independently.
 function checkReminderTick() {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
@@ -85,6 +151,7 @@ function checkReminderTick() {
 
   db.prepare('UPDATE settings SET last_reminder_date = ? WHERE id = 1').run(today);
   sendDueReminder().catch(err => console.error('daily reminder failed:', err));
+  sendSilenceReminder().catch(err => console.error('silence reminder failed:', err));
 }
 
 function scheduleDailyReminder() {
@@ -93,3 +160,5 @@ function scheduleDailyReminder() {
 
 module.exports = router;
 module.exports.scheduleDailyReminder = scheduleDailyReminder;
+module.exports.silentDecks = silentDecks;
+module.exports.sendSilenceReminder = sendSilenceReminder;

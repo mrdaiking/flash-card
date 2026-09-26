@@ -49,6 +49,32 @@ if (!cardCols.includes('example'))     db.exec(`ALTER TABLE cards ADD COLUMN exa
 if (!cardCols.includes('type'))        db.exec(`ALTER TABLE cards ADD COLUMN type TEXT DEFAULT 'vocab'`);
 if (!cardCols.includes('is_favorite')) db.exec(`ALTER TABLE cards ADD COLUMN is_favorite INTEGER DEFAULT 0`);
 
+// FSRS-6 memory state. Added and backfilled once, in one transaction, the
+// first time this runs. next_review is never touched, so no card becomes due
+// because of the migration. The SM-2 columns (interval/ease_factor/repetitions)
+// stay; `interval` keeps being written as the current interval in days.
+if (!cardCols.includes('stability')) {
+  const { seedFromSm2, DAY } = require('./fsrs');
+  db.transaction(() => {
+    db.exec(`
+      ALTER TABLE cards ADD COLUMN stability   REAL    DEFAULT 0;
+      ALTER TABLE cards ADD COLUMN difficulty  REAL    DEFAULT 0;
+      ALTER TABLE cards ADD COLUMN reps        INTEGER DEFAULT 0;
+      ALTER TABLE cards ADD COLUMN lapses      INTEGER DEFAULT 0;
+      ALTER TABLE cards ADD COLUMN state       INTEGER DEFAULT 0;  -- 0 New, 2 Review (ts-fsrs State)
+      ALTER TABLE cards ADD COLUMN last_review INTEGER;            -- ms, like next_review
+    `);
+    const history = db.prepare('SELECT COUNT(*) AS reps, COALESCE(SUM(rating = 1), 0) AS lapses FROM reviews WHERE card_id = ?');
+    const seed = db.prepare('UPDATE cards SET stability = ?, difficulty = ?, reps = ?, lapses = ?, state = 2, last_review = ? WHERE id = ?');
+    // interval > 0 ⇔ reviewed at least once under SM-2; never-reviewed cards stay New.
+    for (const c of db.prepare('SELECT id, interval, ease_factor, next_review FROM cards WHERE interval > 0').all()) {
+      const { stability, difficulty } = seedFromSm2(c);
+      const { reps, lapses } = history.get(c.id);
+      seed.run(stability, difficulty, Math.max(reps, 1), lapses, c.next_review - c.interval * DAY, c.id);
+    }
+  })();
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS journal_entries (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,5 +106,20 @@ db.exec(`
 `);
 db.prepare('INSERT OR IGNORE INTO settings (id, reminder_hour, reminder_minute) VALUES (1, ?, 0)')
   .run(Number(process.env.REMINDER_HOUR_UTC) || 0);
+
+// Domain-silence reminder: when a deck was last nudged (ms), plus the global
+// threshold / re-nudge interval in days.
+const deckCols = db.prepare(`PRAGMA table_info(decks)`).all().map(c => c.name);
+if (!deckCols.includes('silence_notified_at')) db.exec(`ALTER TABLE decks ADD COLUMN silence_notified_at INTEGER`);
+// Per-deck FSRS target retention; NULL = the global default (fsrs.js DEFAULT_RETENTION).
+if (!deckCols.includes('target_retention'))    db.exec(`ALTER TABLE decks ADD COLUMN target_retention REAL`);
+const settingCols = db.prepare(`PRAGMA table_info(settings)`).all().map(c => c.name);
+if (!settingCols.includes('silence_threshold_days')) db.exec(`ALTER TABLE settings ADD COLUMN silence_threshold_days INTEGER NOT NULL DEFAULT 21`);
+if (!settingCols.includes('renotify_days'))          db.exec(`ALTER TABLE settings ADD COLUMN renotify_days INTEGER NOT NULL DEFAULT 14`);
+
+// End-of-day email digest time (UTC; 12:00 UTC = 21:00 Tokyo) + once-a-day guard.
+if (!settingCols.includes('digest_hour'))      db.exec(`ALTER TABLE settings ADD COLUMN digest_hour INTEGER NOT NULL DEFAULT 12`);
+if (!settingCols.includes('digest_minute'))    db.exec(`ALTER TABLE settings ADD COLUMN digest_minute INTEGER NOT NULL DEFAULT 0`);
+if (!settingCols.includes('last_digest_date')) db.exec(`ALTER TABLE settings ADD COLUMN last_digest_date TEXT NOT NULL DEFAULT ''`);
 
 module.exports = db;

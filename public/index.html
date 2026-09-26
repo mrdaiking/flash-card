@@ -120,13 +120,13 @@
       }
       .animate-star-pop { animation: starPop 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
 
-      #new-deck-modal > div, #deck-menu > div, #rename-modal > div, #import-modal > div {
+      #new-deck-modal > div, #deck-menu > div, #rename-modal > div {
         transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s;
         transform: translateY(16px);
         opacity: 0;
       }
       #new-deck-modal.modal-open > div, #deck-menu.modal-open > div,
-      #rename-modal.modal-open > div, #import-modal.modal-open > div {
+      #rename-modal.modal-open > div {
         transform: translateY(0);
         opacity: 1;
       }
@@ -201,6 +201,7 @@
   </nav>
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="/csv.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

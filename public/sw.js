@@ -1,4 +1,4 @@
-const CACHE = 'felix-cards-v20';
+const CACHE = 'felix-cards-v22';
 const SYNC_TAG = 'review-sync';
 const IDB_NAME = 'felix-cards-sw';
 const IDB_STORE = 'pending-reviews';
@@ -51,8 +51,26 @@ async function replayQueue() {
         });
       }
     } catch {
-      // Will retry on next sync
+      // Still offline — stays queued for the next trigger.
     }
+  }
+}
+
+// Several triggers can fire at once (page load, 'online', a successful review,
+// Background Sync where supported); single-flight so no review is sent twice.
+let replaying = null;
+function replayOnce() {
+  return (replaying ||= replayQueue().finally(() => { replaying = null; }));
+}
+
+// A review queued offline must also leave the cached due lists, or reopening
+// Study before reconnecting would serve (and re-rate) the same card again.
+async function dropFromCachedDueLists(cardId) {
+  const cache = await caches.open(CACHE);
+  for (const req of await cache.keys()) {
+    if (!/^\/api\/(cards|decks\/\d+)\/due$/.test(new URL(req.url).pathname)) continue;
+    const cards = (await (await cache.match(req)).json()).filter(c => c.id !== cardId);
+    await cache.put(req, new Response(JSON.stringify(cards), { headers: { 'Content-Type': 'application/json' } }));
   }
 }
 
@@ -73,17 +91,32 @@ self.addEventListener('activate', e => {
   );
 });
 
+// Must clone synchronously: once `res` is handed back to the page its body
+// gets consumed, and a clone taken later (e.g. after caches.open resolves)
+// throws — the put then silently never happens.
+function putInCache(e, request, res) {
+  const copy = res.clone();
+  e.waitUntil(caches.open(CACHE).then(cache => cache.put(request, copy)));
+}
+
 // --- Fetch ---
 self.addEventListener('fetch', e => {
   const { request } = e;
   const url = new URL(request.url);
 
-  // Queue review submissions when offline
-  if (request.method === 'POST' && /^\/api\/cards\/\d+\/review$/.test(url.pathname)) {
+  // Queue reviews and favorite toggles when offline (both replay safely later;
+  // replay keeps queue order, so a card starred then unstarred ends unstarred).
+  // Any one that does go through is also a good moment to flush the queue.
+  const queueable = url.pathname.match(/^\/api\/cards\/(\d+)\/(review|favorite)$/);
+  if (request.method === 'POST' && queueable) {
     e.respondWith(
-      fetch(request.clone()).catch(async () => {
+      fetch(request.clone()).then(res => {
+        e.waitUntil(replayOnce());
+        return res;
+      }).catch(async () => {
         const body = await request.clone().json();
         await enqueue(request.url, body, request.headers.get('Authorization'));
+        if (queueable[2] === 'review') await dropFromCachedDueLists(Number(queueable[1]));
         if ('sync' in self.registration) {
           self.registration.sync.register(SYNC_TAG).catch(() => {});
         }
@@ -95,40 +128,45 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Network-first (falling back to cache only when offline) for GET API
-  // endpoints that back due-count badges. Stale-while-revalidate used to
-  // serve an already-cached response even when a mutation (delete a deck,
-  // rate a card, favorite a card) had just changed that data — the app
-  // looked out of date until a second, later fetch picked up the
-  // background-revalidated cache. Network-first still works offline via
-  // the cache fallback, but never prefers stale data while online.
-  if (request.method === 'GET' && ['/api/decks', '/api/cards/due'].includes(url.pathname)) {
+  // Network-first for every same-origin GET API call, falling back to the last
+  // cached copy only when the network fails — fresh data while online (never
+  // stale-while-revalidate: that showed pre-mutation data right after a
+  // delete/rate/favorite), and every screen still opens offline.
+  if (request.method === 'GET' && url.origin === self.location.origin && url.pathname.startsWith('/api/')) {
     e.respondWith(
       fetch(request).then(res => {
-        e.waitUntil(caches.open(CACHE).then(cache => cache.put(request, res.clone())));
+        if (res.ok) putInCache(e, request, res);
         return res;
       }).catch(() => caches.match(request))
     );
     return;
   }
 
-  // Cache-first for static assets
-  if (request.method === 'GET' && !url.pathname.startsWith('/api/')) {
+  // Cache-first for static assets, including the CDN scripts/styles (Tailwind,
+  // marked, Google Fonts). Those load no-cors and come back opaque (ok=false),
+  // so they must be cached explicitly or an offline cold start is unstyled.
+  if (request.method === 'GET') {
     e.respondWith(
       caches.match(request).then(cached =>
         cached ||
         fetch(request).then(res => {
-          if (res.ok) caches.open(CACHE).then(c => c.put(request, res.clone()));
+          if (res.ok || res.type === 'opaque') putInCache(e, request, res);
           return res;
-        }).catch(() => caches.match('/'))
+        }).catch(() => (request.mode === 'navigate' ? caches.match('/') : Response.error()))
       )
     );
   }
 });
 
-// --- Background sync ---
+// --- Replaying queued reviews ---
+// Background Sync doesn't exist on iOS Safari, so the page also asks for a
+// flush on load, on 'online', and whenever the app comes back to foreground.
 self.addEventListener('sync', e => {
-  if (e.tag === SYNC_TAG) e.waitUntil(replayQueue());
+  if (e.tag === SYNC_TAG) e.waitUntil(replayOnce());
+});
+
+self.addEventListener('message', e => {
+  if (e.data === 'replay-reviews') e.waitUntil(replayOnce());
 });
 
 // --- Push notifications ---
