@@ -71,6 +71,7 @@ async function sendDueReminder() {
   await broadcastPush({
     title: 'Felix Cards',
     body: `${due} card${due === 1 ? '' : 's'} due for review`,
+    badge: due,
   });
 }
 

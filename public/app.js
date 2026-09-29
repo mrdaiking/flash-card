@@ -347,6 +347,8 @@ async function renderHome(app) {
   if (!decks) return;
 
   const totalDue = decks.reduce((s, d) => s + (d.due_count || 0), 0);
+  // Home-screen icon badge; needs notification permission on iOS. ponytail: only refreshed on Home render/push.
+  (totalDue ? navigator.setAppBadge?.(totalDue) : navigator.clearAppBadge?.())?.catch(() => {});
   const hasRecap = recap && (recap.new_word_count || recap.reviews_done || recap.journal_count);
 
   app.innerHTML = `

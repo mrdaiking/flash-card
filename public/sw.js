@@ -1,4 +1,4 @@
-const CACHE = 'felix-cards-v22';
+const CACHE = 'felix-cards-v23';
 const SYNC_TAG = 'review-sync';
 const IDB_NAME = 'felix-cards-sw';
 const IDB_STORE = 'pending-reviews';
@@ -172,13 +172,14 @@ self.addEventListener('message', e => {
 // --- Push notifications ---
 self.addEventListener('push', e => {
   const data = e.data?.json() ?? { title: 'Felix Cards', body: 'You have new activity.' };
-  e.waitUntil(
+  e.waitUntil(Promise.all([
     self.registration.showNotification(data.title, {
       body: data.body,
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
-    })
-  );
+    }),
+    data.badge != null && self.navigator.setAppBadge?.(data.badge),
+  ]));
 });
 
 self.addEventListener('notificationclick', e => {
