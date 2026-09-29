@@ -100,6 +100,8 @@ Cập nhật lần cuối: 2026-09-26. Nguồn gốc: doc kiến trúc trên cla
 - Mỗi ngày 1 lần vào giờ chỉnh được (mặc định 12:00 UTC = 21:00 Tokyo), chỉnh trên Stats → Notifications. `POST /api/digest/test` gửi ngay, `GET /api/digest/preview` xem nội dung.
 - Nội dung: 24 giờ qua (thẻ mới, số lượt ôn), số thẻ due + số sắp due trong 24 giờ tới, "chưa nhớ chắc" (tối đa 8 thẻ, thẻ quên gần đây xếp trước), toàn bộ deck im lặng (không bị giới hạn renotify), và cảnh báo nếu không còn thiết bị nào đăng ký push.
 
+**[Đã build — chưa commit/deploy] Màn hình deck theo kiểu một tay (ngón cái):** Study / + / ⋯ nằm ở thanh cố định ngay trên bottom nav (không còn hàng nút trên đầu). `+` mở bottom-sheet thêm thẻ nhanh (Save & next giữ sheet mở, Done mới refresh list; muốn ảnh thì link sang trang editor đầy đủ). Import chuyển vào menu ⋯. Hàng thẻ (star/edit/delete) giữ nguyên.
+
 ## Cài đặt mặc định & câu hỏi còn mở
 
 - **[Đã build — global, chưa theo domain] Ngưỡng "domain im lặng"**: mặc định 21 ngày, `renotify` mặc định 14 ngày để không nhắc lại mỗi ngày một khi đã bắn. Chỉnh qua `GET/PUT /api/settings/silence`. Hiện là 1 giá trị chung cho toàn app, chưa tách theo từng domain — để sau nếu thực tế dùng thấy cần.

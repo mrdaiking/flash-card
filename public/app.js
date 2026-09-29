@@ -471,28 +471,6 @@ async function renderDeckDetail(app, deckId) {
           <h1 class="text-xl font-bold text-ink truncate font-heading">${escHtml(deck.name)}</h1>
           <p class="text-sm text-muted">${cards.length} cards${dueCount > 0 ? ` · ${dueCount} due` : ''}</p>
         </div>
-        <button onclick="showDeckMenu()"
-          class="w-10 h-10 flex items-center justify-center text-muted hover:text-ink transition-colors flex-shrink-0">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
-          </svg>
-        </button>
-      </div>
-
-      <div class="flex gap-2 mb-5">
-        <button
-          onclick="${dueCount > 0 ? `navigate('#/study/${deckId}')` : 'void(0)'}"
-          class="flex-1 h-12 ${dueCount > 0 ? 'bg-accent hover:bg-accent-dark text-on-accent' : 'bg-surface text-muted cursor-not-allowed'} rounded-xl font-semibold transition-colors">
-          ${dueCount > 0 ? `Study (${dueCount})` : 'No cards due'}
-        </button>
-        <button onclick="navigate('#/cards/new?deck=${deckId}')"
-          class="h-12 px-4 border border-line rounded-xl text-ink/80 hover:text-ink hover:border-accent/50 transition-colors whitespace-nowrap">
-          + Add
-        </button>
-        <button onclick="navigate('#/decks/${deckId}/import')"
-          class="h-12 px-4 border border-line rounded-xl text-ink/80 hover:text-ink hover:border-accent/50 transition-colors">
-          Import
-        </button>
       </div>
 
       <button id="study-fav-btn" onclick="navigate('#/study/${deckId}?favorites=1')"
@@ -506,7 +484,7 @@ async function renderDeckDetail(app, deckId) {
           <p class="font-medium text-muted">No cards yet</p>
           <p class="text-sm mt-1">Add cards or use Import</p>
         </div>` : `
-        <div class="space-y-2">
+        <div class="space-y-2 pb-24">
           ${cards.map(c => {
             const front = previewParts(c.front);
             const back = previewParts(c.back);
@@ -541,9 +519,59 @@ async function renderDeckDetail(app, deckId) {
         </div>`}
     </div>
 
+    <!-- Thumb bar: sits just above #bottom-nav (~64px + safe area) -->
+    <div class="fixed left-0 right-0 z-30 px-4 pb-2 pt-2 bg-paper/95 backdrop-blur border-t border-line/60 flex gap-2"
+      style="bottom: calc(64px + env(safe-area-inset-bottom))">
+      <button onclick="${dueCount > 0 ? `navigate('#/study/${deckId}')` : 'void(0)'}"
+        class="flex-1 h-14 ${dueCount > 0 ? 'bg-accent hover:bg-accent-dark text-on-accent' : 'bg-surface text-muted cursor-not-allowed'} rounded-2xl font-semibold text-base transition-colors">
+        ${dueCount > 0 ? `Study (${dueCount})` : 'No cards due'}
+      </button>
+      <button onclick="showQuickAdd()" aria-label="Add card"
+        class="w-14 h-14 bg-accent hover:bg-accent-dark rounded-2xl text-on-accent text-3xl font-light flex items-center justify-center transition-colors flex-shrink-0">+</button>
+      <button onclick="showDeckMenu()" aria-label="Deck menu"
+        class="w-14 h-14 border border-line rounded-2xl text-ink/80 hover:text-ink flex items-center justify-center transition-colors flex-shrink-0">
+        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+      </button>
+    </div>
+
+    <!-- Quick Add -->
+    <div id="quick-add" class="hidden fixed inset-0 bg-black/70 flex items-end justify-center z-50" onclick="hideQuickAdd(event)">
+      <div class="bg-surface rounded-t-2xl p-4 w-full max-w-md safe-bottom" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-ink font-heading">Add card <span id="qa-count" class="text-sm text-accent font-normal"></span></h2>
+          <a href="#/cards/new?deck=${deckId}" class="text-xs text-accent">More options (images)</a>
+        </div>
+        <div class="space-y-2">
+          <textarea id="qa-front" rows="2" placeholder="Front — question or term"
+            class="w-full bg-base border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none"></textarea>
+          <textarea id="qa-back" rows="2" placeholder="Back — answer or definition"
+            class="w-full bg-base border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none"></textarea>
+          <textarea id="qa-example" rows="1" placeholder="Example (optional)"
+            class="w-full bg-base border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none"></textarea>
+          <select id="qa-type"
+            class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent">
+            ${[['vocab', 'Vocabulary'], ['collocation', 'Collocation'], ['phrasal', 'Phrasal verb'], ['idiom', 'Idiom'], ['sentence', 'Sentence']].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+          </select>
+        </div>
+        <div class="flex gap-2 mt-3">
+          <button onclick="closeQuickAdd(${deckId})"
+            class="h-14 px-5 border border-line rounded-2xl text-muted hover:text-ink transition-colors">Done</button>
+          <button id="qa-save" onclick="saveQuickAdd(${deckId})"
+            class="flex-1 h-14 bg-accent hover:bg-accent-dark rounded-2xl text-on-accent font-semibold transition-colors">Save &amp; next</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Deck Menu -->
     <div id="deck-menu" class="hidden fixed inset-0 bg-black/70 flex items-end justify-center z-50 p-4" onclick="hideDeckMenu(event)">
       <div class="bg-surface rounded-2xl p-3 w-full max-w-sm mb-2" onclick="event.stopPropagation()">
+        <button onclick="navigate('#/decks/${deckId}/import')"
+          class="w-full h-12 flex items-center gap-3 px-4 rounded-xl text-ink/80 hover:text-ink hover:bg-base transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4"/>
+          </svg>
+          Import cards
+        </button>
         <button onclick="showRenameModal()"
           class="w-full h-12 flex items-center gap-3 px-4 rounded-xl text-ink/80 hover:text-ink hover:bg-base transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -593,6 +621,48 @@ async function renderDeckDetail(app, deckId) {
 }
 
 function showDeckMenu() { showModal('deck-menu'); }
+
+// Quick-add sheet: stays open between saves; the list refreshes only on Done
+// (re-rendering the page per save would wipe the open sheet).
+let quickAddCount = 0;
+function showQuickAdd() {
+  quickAddCount = 0;
+  document.getElementById('qa-count').textContent = '';
+  showModal('quick-add');
+  setTimeout(() => document.getElementById('qa-front').focus(), 80);
+}
+function hideQuickAdd(e) {
+  if (e.target === document.getElementById('quick-add')) hideModalEl('quick-add');
+}
+function closeQuickAdd(deckId) {
+  hideModalEl('quick-add');
+  if (quickAddCount) renderDeckDetail(document.getElementById('app'), deckId);
+}
+async function saveQuickAdd(deckId) {
+  const front = document.getElementById('qa-front').value.trim();
+  const back = document.getElementById('qa-back').value.trim();
+  const example = document.getElementById('qa-example').value.trim();
+  const type = document.getElementById('qa-type').value;
+  if (!front || !back) { alert('Both front and back are required.'); return; }
+
+  const btn = document.getElementById('qa-save');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  try {
+    await api(`/api/decks/${deckId}/cards`, { method: 'POST', body: JSON.stringify({ front, back, example, type }) });
+  } catch {
+    // Offline: not queued (by design) — keep what was typed.
+    btn.disabled = false;
+    btn.textContent = 'Offline — not saved. Tap to retry';
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Save & next';
+  quickAddCount++;
+  document.getElementById('qa-count').textContent = `· ${quickAddCount} added`;
+  for (const id of ['qa-front', 'qa-back', 'qa-example']) document.getElementById(id).value = '';
+  document.getElementById('qa-front').focus();
+}
 function hideDeckMenu(e) {
   if (!e || e.target === document.getElementById('deck-menu')) hideModalEl('deck-menu');
 }
