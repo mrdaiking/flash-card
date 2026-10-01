@@ -1533,9 +1533,11 @@ async function renderStats(app) {
     if (el && s) el.value = utcToLocalTimeStr(s.hour, s.minute);
   });
   updateThemeButtons();
-  api('/api/version').then(v => {
+  // Server version + cached app files (SW cache); if the cache lags the server, the phone is on stale files.
+  Promise.all([api('/api/version'), caches?.keys() ?? []]).then(([v, ks]) => {
     const el = document.getElementById('app-version');
-    if (el && v) el.textContent = `Felix Cards · ${v.commit}`;
+    const c = ks.find(k => k.startsWith('felix-cards-'))?.replace('felix-cards-', '');
+    if (el && v) el.innerHTML = `Felix Cards v${v.version} · ${v.commit}${v.date ? ` · ${v.date}` : ''}${c ? `<br>app files ${c}` : ''}`;
   });
 }
 

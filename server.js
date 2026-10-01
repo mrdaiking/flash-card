@@ -9,9 +9,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const auth = require('./middleware/auth');
 
-let commitHash = 'dev';
-try { commitHash = execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim(); } catch {}
-app.get('/api/version', auth, (req, res) => res.json({ commit: commitHash }));
+const git = args => { try { return execSync(`git ${args}`, { cwd: __dirname }).toString().trim(); } catch { return ''; } };
+const versionInfo = { version: require('./package.json').version, commit: git('rev-parse --short HEAD') || 'dev', date: git('log -1 --format=%cs') };
+app.get('/api/version', auth, (req, res) => res.json(versionInfo));
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api', auth, require('./routes/decks'));
