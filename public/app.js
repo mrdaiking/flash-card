@@ -43,10 +43,11 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 applyTheme();
 
 /* ── Markdown helper ── */
+// breaks:true so a single Enter is a line break (marked's default needs a blank line).
 const md = text => {
   if (!text) return '';
-  if (typeof marked === 'function') return marked(text);
-  if (marked && marked.parse) return marked.parse(text);
+  if (typeof marked === 'function') return marked(text, { breaks: true });
+  if (marked && marked.parse) return marked.parse(text, { breaks: true });
   return escHtml(text);
 };
 
@@ -216,7 +217,46 @@ document.getElementById('pin-input').addEventListener('keydown', e => {
 });
 
 /* ── API helper ── */
+// Network banner: 'ok' | 'slow' | 'offline'. The SW reports reachability
+// (it knows when it fell back to cache); api() flags slow responses.
+let netState = 'ok';
+function setNet(state) {
+  if (state === netState) return;
+  const was = netState;
+  netState = state;
+  const el = document.getElementById('net-banner');
+  clearTimeout(setNet.t);
+  const ui = {
+    offline: ['Offline — showing saved data. Reviews sync when you\u2019re back.', 'bg-rate-again'],
+    slow: ['Slow connection — still trying\u2026', 'bg-rate-hard'],
+    ok: ['Back online \u2713', 'bg-rate-easy'],
+  }[state];
+  el.className = el.className.replace(/\bbg-rate-\w+/g, '').replace('hidden', '').trim() + ' ' + ui[1];
+  el.textContent = ui[0];
+  if (state === 'ok') {
+    if (was === 'slow') { el.classList.add('hidden'); return; }
+    setNet.t = setTimeout(() => el.classList.add('hidden'), 2500);
+  }
+}
+window.addEventListener('offline', () => setNet('offline'));
+window.addEventListener('online', () => setNet('ok'));
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data && 'net' in e.data) setNet(e.data.net ? 'ok' : 'offline');
+  });
+}
+window.addEventListener('load', () => { if (!navigator.onLine) setNet('offline'); });
+
 async function api(path, opts = {}) {
+  const slowTimer = setTimeout(() => { if (netState === 'ok') setNet('slow'); }, 4000);
+  try {
+    return await apiFetch(path, opts);
+  } finally {
+    clearTimeout(slowTimer);
+    if (netState === 'slow') setNet('ok');
+  }
+}
+async function apiFetch(path, opts = {}) {
   const res = await fetch(path, {
     ...opts,
     headers: {

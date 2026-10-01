@@ -1,5 +1,7 @@
-const CACHE = 'felix-cards-v24';
+const CACHE = 'felix-cards-v26';
 const SYNC_TAG = 'review-sync';
+// Tell open pages whether the network is reachable (drives the offline banner).
+const notifyNet = ok => self.clients.matchAll().then(cs => cs.forEach(c => c.postMessage({ net: ok })));
 const IDB_NAME = 'felix-cards-sw';
 const IDB_STORE = 'pending-reviews';
 
@@ -112,8 +114,10 @@ self.addEventListener('fetch', e => {
     e.respondWith(
       fetch(request.clone()).then(res => {
         e.waitUntil(replayOnce());
+        notifyNet(true);
         return res;
       }).catch(async () => {
+        notifyNet(false);
         const body = await request.clone().json();
         await enqueue(request.url, body, request.headers.get('Authorization'));
         if (queueable[2] === 'review') await dropFromCachedDueLists(Number(queueable[1]));
@@ -135,9 +139,10 @@ self.addEventListener('fetch', e => {
   if (request.method === 'GET' && url.origin === self.location.origin && url.pathname.startsWith('/api/')) {
     e.respondWith(
       fetch(request).then(res => {
+        notifyNet(true);
         if (res.ok) putInCache(e, request, res);
         return res;
-      }).catch(() => caches.match(request))
+      }).catch(() => { notifyNet(false); return caches.match(request); })
     );
     return;
   }
