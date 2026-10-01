@@ -579,7 +579,7 @@ async function renderDeckDetail(app, deckId) {
       <div class="bg-surface rounded-t-2xl p-4 w-full max-w-md safe-bottom" onclick="event.stopPropagation()">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-ink font-heading">Add card <span id="qa-count" class="text-sm text-accent font-normal"></span></h2>
-          <a href="#/cards/new?deck=${deckId}" class="text-xs text-accent">More options (images)</a>
+          <button onclick="expandQuickAdd(${deckId})" class="text-xs text-accent">More options (images)</button>
         </div>
         <div class="space-y-2">
           <textarea id="qa-front" rows="2" placeholder="Front — question or term"
@@ -670,6 +670,12 @@ function showQuickAdd() {
   document.getElementById('qa-count').textContent = '';
   showModal('quick-add');
   setTimeout(() => document.getElementById('qa-front').focus(), 80);
+}
+// Hand what's typed in the sheet to the full editor so expanding doesn't lose it.
+let pendingDraft = null;
+function expandQuickAdd(deckId) {
+  pendingDraft = Object.fromEntries(['front', 'back', 'example', 'type'].map(k => [k, document.getElementById(`qa-${k}`).value]));
+  navigate(`#/cards/new?deck=${deckId}`);
 }
 function hideQuickAdd(e) {
   if (e.target === document.getElementById('quick-add')) hideModalEl('quick-add');
@@ -1278,10 +1284,12 @@ async function renderEditCard(app, cardId, deckId) {
   }
 
   const isNew = !cardId;
-  const front = card?.front || '';
-  const back = card?.back || '';
-  const example = card?.example || '';
-  const cardType = card?.type || 'vocab';
+  const draft = isNew ? pendingDraft : null;
+  pendingDraft = null;
+  const front = card?.front || draft?.front || '';
+  const back = card?.back || draft?.back || '';
+  const example = card?.example || draft?.example || '';
+  const cardType = card?.type || draft?.type || 'vocab';
   const backHash = deckId ? `#/decks/${deckId}` : '#/';
   const typeOpts = [
     ['vocab', 'Vocabulary'],
