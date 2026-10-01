@@ -90,15 +90,22 @@
       transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
       transform-style: preserve-3d;
       position: relative;
+      /* Both faces share one grid cell, so the taller face sets the height (no clipped text). */
+      display: grid;
+      min-height: 260px;
     }
     .card-inner.flipped { transform: rotateY(180deg); }
     .card-front, .card-back {
+      grid-area: 1 / 1;
+      position: relative; /* anchors the star / speaker buttons */
+      min-width: 0;
       backface-visibility: hidden;
       -webkit-backface-visibility: hidden;
     }
     .card-back { transform: rotateY(180deg); }
     .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
     .safe-top { padding-top: max(env(safe-area-inset-top), 0px); }
+    .prose-content { max-width: 100%; overflow-wrap: anywhere; }
     .prose-content img { max-width: 100%; border-radius: 0.5rem; }
     .prose-content pre { background: rgb(var(--color-base)); padding: 0.75rem; border-radius: 0.5rem; overflow-x: auto; margin: 0.5rem 0; }
     .prose-content code { font-size: 0.85em; background: rgb(var(--color-base)); padding: 0.1em 0.3em; border-radius: 0.25rem; }

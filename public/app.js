@@ -1094,9 +1094,9 @@ function drawStudyCard() {
 
       <!-- Card -->
       <div class="flex-1 flex items-center justify-center">
-        <div class="card-scene w-full animate-card-in" style="height:260px" id="card-scene" onclick="flipCard()">
-          <div class="card-inner w-full h-full${flipped ? ' flipped' : ''}" id="card-inner">
-            <div class="card-front absolute inset-0 bg-surface rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer shadow-lg shadow-ink/10 select-none">
+        <div class="card-scene w-full animate-card-in" id="card-scene" onclick="flipCard()">
+          <div class="card-inner w-full${flipped ? ' flipped' : ''}" id="card-inner">
+            <div class="card-front bg-surface rounded-2xl p-6 pb-12 flex flex-col items-center justify-center cursor-pointer shadow-lg shadow-ink/10 select-none">
               <div class="prose-content text-ink text-xl text-center leading-relaxed">${md(card.front)}</div>
               <p class="text-muted text-xs mt-4">tap to reveal</p>
               <button id="fav-btn-front" onclick="event.stopPropagation(); toggleFavoriteInStudy()"
@@ -1110,7 +1110,7 @@ function drawStudyCard() {
                 ${speakerOnSVG}
               </button>
             </div>
-            <div class="card-back absolute inset-0 bg-accent/5 border border-accent/20 rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer shadow-lg shadow-ink/10 select-none overflow-y-auto">
+            <div class="card-back bg-accent/5 border border-accent/20 rounded-2xl p-5 pb-12 flex flex-col items-center justify-center cursor-pointer shadow-lg shadow-ink/10 select-none">
               ${badge ? `<div class="mb-2">${badge}</div>` : ''}
               <div class="prose-content text-ink text-lg text-center leading-relaxed">${md(card.back)}</div>
               ${card.example ? `
