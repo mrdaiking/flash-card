@@ -12,7 +12,7 @@ router.get('/decks', (req, res) => {
     FROM decks d
     LEFT JOIN cards c ON c.deck_id = d.id
     GROUP BY d.id
-    ORDER BY d.created_at DESC
+    ORDER BY due_count DESC, total_count DESC, d.created_at DESC
   `).all(now);
   res.json(decks);
 });
