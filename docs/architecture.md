@@ -102,6 +102,8 @@ Cập nhật lần cuối: 2026-09-26. Nguồn gốc: doc kiến trúc trên cla
 
 **[Đã build — chưa commit/deploy] Màn hình deck theo kiểu một tay (ngón cái):** Study / + / ⋯ nằm ở thanh cố định ngay trên bottom nav (không còn hàng nút trên đầu). `+` mở bottom-sheet thêm thẻ nhanh (Save & next giữ sheet mở, Done mới refresh list; muốn ảnh thì link sang trang editor đầy đủ). Import chuyển vào menu ⋯. Hàng thẻ (star/edit/delete) giữ nguyên.
 
+**[Đã build — chưa commit/deploy] Template theo từng deck** (thay cho enum `cards.type` cố định kiểu học tiếng Anh): `decks.front_label/back_label/example_label` (NULL = Front/Back/Example) và `decks.tts_lang` (NULL = en-US như cũ, `off` = không đọc). Preset (Blank/English/Tech/Philosophy/Japanese) chỉ là hằng số trong `public/app.js` để điền sẵn form khi tạo deck hoặc ở menu ⋯ → "Card template & speech"; deck lưu giá trị cuối cùng. `cards.type` giờ là nhãn tự do (≤30 ký tự, trống = `vocab` = không hiện badge; giá trị cũ như `phrasal` vẫn hợp lệ); gợi ý nhãn lấy từ các nhãn đã dùng trong deck. Màn study đọc theo `tts_lang` của deck chứa thẻ và hiện caption trường khi deck đã đổi nhãn. Chưa làm: màn Import vẫn gọi cột Front/Back/Example, cloze, tag.
+
 ## Cài đặt mặc định & câu hỏi còn mở
 
 - **[Đã build — global, chưa theo domain] Ngưỡng "domain im lặng"**: mặc định 21 ngày, `renotify` mặc định 14 ngày để không nhắc lại mỗi ngày một khi đã bắn. Chỉnh qua `GET/PUT /api/settings/silence`. Hiện là 1 giá trị chung cho toàn app, chưa tách theo từng domain — để sau nếu thực tế dùng thấy cần.

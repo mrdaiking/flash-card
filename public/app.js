@@ -145,10 +145,31 @@ function previewParts(source) {
   return { imageUrl: m ? m[1] : null, text: stripHtml(md(withoutImg)).trim() };
 }
 
-function speak(text) {
-  if (!ttsEnabled || !window.speechSynthesis) return;
+// Per-deck card template: field labels + speech language ('off' = silent).
+// Presets only pre-fill the template form; the deck stores the resulting values.
+const TTS_LANGS = [['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['ja-JP', '日本語'], ['vi-VN', 'Tiếng Việt'],
+  ['zh-CN', '中文'], ['ko-KR', '한국어'], ['fr-FR', 'Français'], ['de-DE', 'Deutsch'], ['es-ES', 'Español'], ['off', 'No speech']];
+const DECK_PRESETS = {
+  blank:      { name: 'Blank',      front_label: 'Front',   back_label: 'Back',        example_label: 'Example',            tts_lang: 'en-US' },
+  english:    { name: 'English',    front_label: 'Word',    back_label: 'Meaning',     example_label: 'Example sentence',   tts_lang: 'en-US' },
+  tech:       { name: 'Tech',       front_label: 'Concept', back_label: 'Explanation', example_label: 'Code / use case',    tts_lang: 'off' },
+  philosophy: { name: 'Philosophy', front_label: 'Term',    back_label: 'Definition',  example_label: 'Quote / thinker',    tts_lang: 'en-US' },
+  japanese:   { name: 'Japanese',   front_label: 'Question', back_label: 'Answer',     example_label: 'Rule / reason',      tts_lang: 'ja-JP' },
+};
+const DEFAULT_DECK = DECK_PRESETS.blank;
+const deckById = {}; // filled by api() whenever /api/decks is fetched
+const deckInfo = id => deckById[id] || DEFAULT_DECK;
+const presetOptions = () => Object.entries(DECK_PRESETS).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('');
+const langOptions = sel => TTS_LANGS.map(([v, l]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${l}</option>`).join('');
+// Small field caption on study cards, only once a deck's labels were customised.
+const fieldLabel = (text, def) => text && text !== def
+  ? `<p class="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">${escHtml(text)}</p>` : '';
+
+function speak(text, lang = 'en-US') {
+  if (!ttsEnabled || lang === 'off' || !window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const utt = new SpeechSynthesisUtterance(stripHtml(md(text)));
+  utt.lang = lang;
   utt.rate = 0.95;
   window.speechSynthesis.speak(utt);
 }
@@ -250,7 +271,9 @@ window.addEventListener('load', () => { if (!navigator.onLine) setNet('offline')
 async function api(path, opts = {}) {
   const slowTimer = setTimeout(() => { if (netState === 'ok') setNet('slow'); }, 4000);
   try {
-    return await apiFetch(path, opts);
+    const data = await apiFetch(path, opts);
+    if (path === '/api/decks' && Array.isArray(data)) data.forEach(d => { deckById[d.id] = d; });
+    return data;
   } finally {
     clearTimeout(slowTimer);
     if (netState === 'slow') setNet('ok');
@@ -303,7 +326,7 @@ function router() {
     renderImport(app, m[1]);
   } else if ((m = hash.match(/^#\/study\/([\w]+)/))) {
     const params = new URLSearchParams(hash.split('?')[1] || '');
-    renderStudy(app, m[1], params.get('favorites') === '1');
+    renderStudy(app, m[1], params.get('favorites') === '1', params.get('start'));
   } else if ((m = hash.match(/^#\/cards\/new/))) {
     setActiveNav('');
     const params = new URLSearchParams(hash.split('?')[1] || '');
@@ -311,7 +334,7 @@ function router() {
   } else if ((m = hash.match(/^#\/cards\/(\d+)\/edit/))) {
     setActiveNav('');
     const params = new URLSearchParams(hash.split('?')[1] || '');
-    renderEditCard(app, m[1], params.get('deck'));
+    renderEditCard(app, m[1], params.get('deck'), params.get('ret'));
   } else if (hash === '#/journal') {
     setActiveNav('journal');
     renderJournal(app);
@@ -457,7 +480,10 @@ async function renderHome(app) {
       <div class="bg-surface rounded-2xl p-6 w-full max-w-sm mb-2" onclick="event.stopPropagation()">
         <h2 class="text-lg font-semibold text-ink mb-4 font-heading">New Deck</h2>
         <input id="new-deck-name" type="text" placeholder="Deck name"
-          class="w-full bg-base border border-line rounded-xl px-4 h-12 text-ink focus:outline-none focus:border-accent mb-4"/>
+          class="w-full bg-base border border-line rounded-xl px-4 h-12 text-ink focus:outline-none focus:border-accent mb-3"/>
+        <label class="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">Template</label>
+        <select id="new-deck-preset"
+          class="w-full h-12 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent mb-4">${presetOptions()}</select>
         <div class="flex gap-3">
           <button onclick="hideNewDeckModal()"
             class="flex-1 h-12 border border-line rounded-xl text-muted hover:text-ink transition-colors">Cancel</button>
@@ -479,7 +505,8 @@ function hideNewDeckModal(e) {
 async function createDeck() {
   const name = document.getElementById('new-deck-name').value.trim();
   if (!name) return;
-  await api('/api/decks', { method: 'POST', body: JSON.stringify({ name }) });
+  const { name: _n, ...template } = DECK_PRESETS[document.getElementById('new-deck-preset').value] || DEFAULT_DECK;
+  await api('/api/decks', { method: 'POST', body: JSON.stringify({ name, ...template }) });
   hideNewDeckModal();
   renderHome(document.getElementById('app'));
 }
@@ -497,6 +524,7 @@ async function renderDeckDetail(app, deckId) {
 
   const dueCount = cards.filter(c => c.next_review <= Date.now()).length;
   const favoriteCount = cards.filter(c => c.is_favorite).length;
+  const typeList = typeDatalist('type-list', cards);
 
   app.innerHTML = `
     <div class="p-4 pt-6">
@@ -582,16 +610,15 @@ async function renderDeckDetail(app, deckId) {
           <button onclick="expandQuickAdd(${deckId})" class="text-xs text-accent">More options (images)</button>
         </div>
         <div class="space-y-2">
-          <textarea id="qa-front" rows="2" placeholder="Front — question or term"
+          <textarea id="qa-front" rows="2" placeholder="${escHtml(deck.front_label)}"
             class="w-full bg-base border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none"></textarea>
-          <textarea id="qa-back" rows="2" placeholder="Back — answer or definition"
+          <textarea id="qa-back" rows="2" placeholder="${escHtml(deck.back_label)}"
             class="w-full bg-base border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none"></textarea>
-          <textarea id="qa-example" rows="1" placeholder="Example (optional)"
+          <textarea id="qa-example" rows="1" placeholder="${escHtml(deck.example_label)} (optional)"
             class="w-full bg-base border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none"></textarea>
-          <select id="qa-type"
-            class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent">
-            ${[['vocab', 'Vocabulary'], ['collocation', 'Collocation'], ['phrasal', 'Phrasal verb'], ['idiom', 'Idiom'], ['sentence', 'Sentence']].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
-          </select>
+          <input id="qa-type" list="type-list" maxlength="30" placeholder="Label (optional)"
+            class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
+          ${typeList}
         </div>
         <div class="flex gap-2 mt-3">
           <button onclick="closeQuickAdd(${deckId})"
@@ -611,6 +638,13 @@ async function renderDeckDetail(app, deckId) {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4"/>
           </svg>
           Import cards
+        </button>
+        <button onclick="showTemplateModal()"
+          class="w-full h-12 flex items-center gap-3 px-4 rounded-xl text-ink/80 hover:text-ink hover:bg-base transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h10M4 18h7"/>
+          </svg>
+          Card template &amp; speech
         </button>
         <button onclick="showRenameModal()"
           class="w-full h-12 flex items-center gap-3 px-4 rounded-xl text-ink/80 hover:text-ink hover:bg-base transition-colors">
@@ -642,6 +676,34 @@ async function renderDeckDetail(app, deckId) {
       </div>
     </div>
 
+    <!-- Template Modal -->
+    <div id="template-modal" class="hidden fixed inset-0 bg-black/70 flex items-end justify-center z-50" onclick="hideTemplateModal(event)">
+      <div class="bg-surface rounded-t-2xl p-4 w-full max-w-md safe-bottom" onclick="event.stopPropagation()">
+        <h2 class="text-lg font-semibold text-ink mb-3 font-heading">Card template</h2>
+        <select id="tpl-preset" onchange="applyPreset(this.value)"
+          class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent mb-3">
+          <option value="">Start from preset…</option>${presetOptions()}
+        </select>
+        <div class="space-y-2">
+          <input id="tpl-front" maxlength="40" value="${escHtml(deck.front_label)}" placeholder="Front label"
+            class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
+          <input id="tpl-back" maxlength="40" value="${escHtml(deck.back_label)}" placeholder="Back label"
+            class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
+          <input id="tpl-example" maxlength="40" value="${escHtml(deck.example_label)}" placeholder="Example label"
+            class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
+          <label class="block text-xs font-semibold text-muted uppercase tracking-wider pt-1">Speech language</label>
+          <select id="tpl-lang"
+            class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent">${langOptions(deck.tts_lang)}</select>
+        </div>
+        <div class="flex gap-2 mt-3">
+          <button onclick="hideTemplateModal()"
+            class="h-14 px-5 border border-line rounded-2xl text-muted hover:text-ink transition-colors">Cancel</button>
+          <button onclick="saveTemplate(${deckId})"
+            class="flex-1 h-14 bg-accent hover:bg-accent-dark rounded-2xl text-on-accent font-semibold transition-colors">Save</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Rename Modal -->
     <div id="rename-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div class="bg-surface rounded-2xl p-6 w-full max-w-sm">
@@ -661,6 +723,33 @@ async function renderDeckDetail(app, deckId) {
 }
 
 function showDeckMenu() { showModal('deck-menu'); }
+
+// <datalist> of labels already used in a deck, so typing a label is usually one tap.
+function typeDatalist(id, cards) {
+  const used = [...new Set(cards.map(c => c.type).filter(t => t && t !== 'vocab'))];
+  return `<datalist id="${id}">${used.map(t => `<option value="${escHtml(t)}">`).join('')}</datalist>`;
+}
+
+function showTemplateModal() { hideDeckMenu(); showModal('template-modal'); }
+function hideTemplateModal(e) {
+  if (!e || e.target === document.getElementById('template-modal')) hideModalEl('template-modal');
+}
+function applyPreset(key) {
+  const p = DECK_PRESETS[key];
+  if (!p) return;
+  document.getElementById('tpl-front').value = p.front_label;
+  document.getElementById('tpl-back').value = p.back_label;
+  document.getElementById('tpl-example').value = p.example_label;
+  document.getElementById('tpl-lang').value = p.tts_lang;
+}
+async function saveTemplate(deckId) {
+  const v = id => document.getElementById(id).value.trim();
+  await api(`/api/decks/${deckId}/template`, { method: 'PUT', body: JSON.stringify({
+    front_label: v('tpl-front'), back_label: v('tpl-back'), example_label: v('tpl-example'), tts_lang: v('tpl-lang'),
+  }) });
+  hideTemplateModal();
+  renderDeckDetail(document.getElementById('app'), deckId);
+}
 
 // Quick-add sheet: stays open between saves; the list refreshes only on Done
 // (re-rendering the page per save would wipe the open sheet).
@@ -942,16 +1031,20 @@ async function impSubmit() {
 ════════════════════════════════════════ */
 let study = null;
 
-async function renderStudy(app, deckId, favoritesOnly = false) {
+async function renderStudy(app, deckId, favoritesOnly = false, startId = null) {
   app.innerHTML = `<div class="flex items-center justify-center h-64 text-muted">Loading cards...</div>`;
   const url = favoritesOnly
     ? (deckId === 'all' ? '/api/cards/favorites' : `/api/decks/${deckId}/favorites`)
     : (deckId === 'all' ? '/api/cards/due?ahead=3' : `/api/decks/${deckId}/due?ahead=3`);
   let cards = await api(url);
   if (!cards) return;
+  if (!Object.keys(deckById).length) await api('/api/decks'); // template labels + speech language
   // The list includes the next 3 days so the SW's cached copy stays useful
   // offline; what's actually due is decided by this device's clock.
   if (!favoritesOnly) cards = cards.filter(c => c.next_review <= Date.now());
+  // Coming back from editing a card mid-session: resume on that card.
+  const at = cards.findIndex(c => c.id == startId);
+  if (at > 0) cards.unshift(...cards.splice(at, 1));
 
   if (cards.length === 0) {
     app.innerHTML = `
@@ -1061,6 +1154,9 @@ function drawStudyCard() {
   const backHash = deckId === 'all' ? '#/' : `#/decks/${deckId}`;
   const badge = typeBadge(card.type);
   const backSpeak = card.example ? `${card.back}. ${card.example}` : card.back;
+  const info = deckInfo(card.deck_id);
+  const lang = info.tts_lang;
+  const noSpeech = lang === 'off' ? ' hidden' : '';
 
   app.innerHTML = `
     <div class="flex flex-col min-h-screen p-4 pt-5 pb-32">
@@ -1076,6 +1172,12 @@ function drawStudyCard() {
           <div class="bg-accent h-1.5 rounded-full transition-all duration-300" style="width:${progress}%"></div>
         </div>
         <span class="text-muted text-sm flex-shrink-0">${index + 1} / ${total}</span>
+        <button onclick="editCurrentCard()" aria-label="Edit card"
+          class="w-9 h-9 flex items-center justify-center text-muted hover:text-ink transition-colors flex-shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+          </svg>
+        </button>
         <button id="tts-btn" onclick="toggleTTS()"
           class="w-9 h-9 flex items-center justify-center ${ttsEnabled ? 'text-accent' : 'text-muted'} hover:text-ink transition-colors flex-shrink-0"
           title="${ttsEnabled ? 'Mute TTS' : 'Unmute TTS'}">
@@ -1097,33 +1199,33 @@ function drawStudyCard() {
         <div class="card-scene w-full animate-card-in" id="card-scene" onclick="flipCard()">
           <div class="card-inner w-full${flipped ? ' flipped' : ''}" id="card-inner">
             <div class="card-front bg-surface rounded-2xl p-6 pb-12 flex flex-col items-center justify-center cursor-pointer shadow-lg shadow-ink/10 select-none">
-              <div class="prose-content text-ink text-xl text-center leading-relaxed">${md(card.front)}</div>
+              ${fieldLabel(info.front_label, 'Front')}<div class="prose-content text-ink text-xl text-center leading-relaxed">${md(card.front)}</div>
               <p class="text-muted text-xs mt-4">tap to reveal</p>
               <button id="fav-btn-front" onclick="event.stopPropagation(); toggleFavoriteInStudy()"
                 class="absolute bottom-3 left-3 w-8 h-8 flex items-center justify-center ${card.is_favorite ? 'text-rate-hard' : 'text-muted'} hover:text-rate-hard transition-colors"
                 title="${card.is_favorite ? 'Remove from favorites' : 'Add to favorites'}">
                 ${starSVG(card.is_favorite)}
               </button>
-              <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(card.front))})"
-                class="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center text-muted hover:text-ink transition-colors"
+              <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(card.front))}, '${lang}')"
+                class="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center text-muted hover:text-ink transition-colors${noSpeech}"
                 title="Replay">
                 ${speakerOnSVG}
               </button>
             </div>
             <div class="card-back bg-accent/5 border border-accent/20 rounded-2xl p-5 pb-12 flex flex-col items-center justify-center cursor-pointer shadow-lg shadow-ink/10 select-none">
               ${badge ? `<div class="mb-2">${badge}</div>` : ''}
-              <div class="prose-content text-ink text-lg text-center leading-relaxed">${md(card.back)}</div>
+              ${fieldLabel(info.back_label, 'Back')}<div class="prose-content text-ink text-lg text-center leading-relaxed">${md(card.back)}</div>
               ${card.example ? `
                 <div class="mt-3 pt-3 border-t border-accent/20 w-full">
-                  <div class="prose-content text-muted text-sm text-center italic leading-relaxed">${md(card.example)}</div>
+                  ${fieldLabel(info.example_label, 'Example')}<div class="prose-content text-muted text-sm text-center italic leading-relaxed">${md(card.example)}</div>
                 </div>` : ''}
               <button id="fav-btn-back" onclick="event.stopPropagation(); toggleFavoriteInStudy()"
                 class="absolute bottom-3 left-3 w-8 h-8 flex items-center justify-center ${card.is_favorite ? 'text-rate-hard' : 'text-muted'} hover:text-rate-hard transition-colors"
                 title="${card.is_favorite ? 'Remove from favorites' : 'Add to favorites'}">
                 ${starSVG(card.is_favorite)}
               </button>
-              <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(backSpeak))})"
-                class="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center text-accent/50 hover:text-accent transition-colors"
+              <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(backSpeak))}, '${lang}')"
+                class="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center text-accent/50 hover:text-accent transition-colors${noSpeech}"
                 title="Replay">
                 ${speakerOnSVG}
               </button>
@@ -1160,7 +1262,7 @@ function drawStudyCard() {
   `;
 
   setupSwipe();
-  if (ttsMode === 'both' || ttsMode === 'front') speak(card.front);
+  if (ttsMode === 'both' || ttsMode === 'front') speak(card.front, lang);
 }
 
 function flipCard() {
@@ -1171,22 +1273,17 @@ function flipCard() {
 
   const c = study.cards[study.index];
   if (study.flipped) {
-    if (ttsMode === 'both' || ttsMode === 'back') speak(c.example ? `${c.back}. ${c.example}` : c.back);
+    if (ttsMode === 'both' || ttsMode === 'back') speak(c.example ? `${c.back}. ${c.example}` : c.back, deckInfo(c.deck_id).tts_lang);
   } else {
-    if (ttsMode === 'both' || ttsMode === 'front') speak(c.front);
+    if (ttsMode === 'both' || ttsMode === 'front') speak(c.front, deckInfo(c.deck_id).tts_lang);
   }
 }
 
-/* Small pill showing the card's chunk type (hidden for plain vocab) */
+/* Small pill showing the card's free-text label (hidden when empty / legacy 'vocab') */
 function typeBadge(type) {
-  const labels = {
-    collocation: 'Collocation',
-    phrasal: 'Phrasal verb',
-    idiom: 'Idiom',
-    sentence: 'Sentence',
-  };
-  if (!labels[type]) return '';
-  return `<span class="inline-block bg-accent/15 text-accent-dark text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full">${labels[type]}</span>`;
+  if (!type || type === 'vocab') return '';
+  const text = { phrasal: 'Phrasal verb' }[type] || type; // legacy keys
+  return `<span class="inline-block bg-accent/15 text-accent-dark text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full">${escHtml(text)}</span>`;
 }
 
 // Fire a study-screen write (review or favorite) without blocking the UI,
@@ -1210,6 +1307,15 @@ async function rate(rating) {
 
 // Leaving study (back arrow or "Back to Decks") always routes through here so
 // due-count/favorite state on the screen you land on is fresh immediately.
+// Edit the card on screen; saving/cancelling returns to this session on the same card.
+async function editCurrentCard() {
+  const c = study.cards[study.index];
+  const [path, query = ''] = window.location.hash.split('?');
+  const params = new URLSearchParams(query);
+  params.set('start', c.id);
+  await Promise.all(study.pending || []);
+  navigate(`#/cards/${c.id}/edit?deck=${c.deck_id}&ret=${encodeURIComponent(`${path}?${params}`)}`);
+}
 async function leaveStudy(hash) {
   await Promise.all(study?.pending || []);
   navigate(hash);
@@ -1262,7 +1368,7 @@ function setupSwipe() {
 /* ════════════════════════════════════════
    Screen: Edit / Add Card
 ════════════════════════════════════════ */
-async function renderEditCard(app, cardId, deckId) {
+async function renderEditCard(app, cardId, deckId, ret = null) {
   loading(app);
   let card = null;
 
@@ -1283,6 +1389,9 @@ async function renderEditCard(app, cardId, deckId) {
     }
   }
 
+  if (!Object.keys(deckById).length) await api('/api/decks');
+  const info = deckInfo(deckId);
+  const siblings = deckId ? (await api(`/api/decks/${deckId}/cards`)) || [] : [];
   const isNew = !cardId;
   const draft = isNew ? pendingDraft : null;
   pendingDraft = null;
@@ -1290,14 +1399,7 @@ async function renderEditCard(app, cardId, deckId) {
   const back = card?.back || draft?.back || '';
   const example = card?.example || draft?.example || '';
   const cardType = card?.type || draft?.type || 'vocab';
-  const backHash = deckId ? `#/decks/${deckId}` : '#/';
-  const typeOpts = [
-    ['vocab', 'Vocabulary'],
-    ['collocation', 'Collocation'],
-    ['phrasal', 'Phrasal verb'],
-    ['idiom', 'Idiom'],
-    ['sentence', 'Sentence'],
-  ];
+  const backHash = ret?.startsWith('#/study/') ? ret : deckId ? `#/decks/${deckId}` : '#/';
 
   app.innerHTML = `
     <div class="p-4 pt-6">
@@ -1313,8 +1415,8 @@ async function renderEditCard(app, cardId, deckId) {
 
       <div class="space-y-5">
         <div>
-          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">Front</label>
-          <textarea id="edit-front" rows="4" placeholder="Question or term..."
+          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">${escHtml(info.front_label)}</label>
+          <textarea id="edit-front" rows="4" placeholder="${escHtml(info.front_label)}..."
             class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none">${escHtml(front)}</textarea>
           <button type="button" id="image-btn-edit-front" onclick="pickImageFor('edit-front')" class="mt-2 text-xs text-accent hover:text-accent-dark">+ Add image</button>
           <div class="mt-2 p-3 bg-base rounded-xl text-ink text-sm prose-content min-h-10" id="preview-front">
@@ -1323,8 +1425,8 @@ async function renderEditCard(app, cardId, deckId) {
         </div>
 
         <div>
-          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">Back</label>
-          <textarea id="edit-back" rows="4" placeholder="Answer or definition..."
+          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">${escHtml(info.back_label)}</label>
+          <textarea id="edit-back" rows="4" placeholder="${escHtml(info.back_label)}..."
             class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none">${escHtml(back)}</textarea>
           <button type="button" id="image-btn-edit-back" onclick="pickImageFor('edit-back')" class="mt-2 text-xs text-accent hover:text-accent-dark">+ Add image</button>
           <div class="mt-2 p-3 bg-base rounded-xl text-ink text-sm prose-content min-h-10" id="preview-back">
@@ -1333,8 +1435,8 @@ async function renderEditCard(app, cardId, deckId) {
         </div>
 
         <div>
-          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">Example / chunk in context</label>
-          <textarea id="edit-example" rows="2" placeholder="e.g. leverage our existing data to improve UX"
+          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">${escHtml(info.example_label)}</label>
+          <textarea id="edit-example" rows="2" placeholder="${escHtml(info.example_label)} (optional)"
             class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none">${escHtml(example)}</textarea>
           <button type="button" id="image-btn-edit-example" onclick="pickImageFor('edit-example')" class="mt-2 text-xs text-accent hover:text-accent-dark">+ Add image</button>
           <div class="mt-2 p-3 bg-base rounded-xl text-muted text-sm italic prose-content min-h-10" id="preview-example">
@@ -1345,17 +1447,16 @@ async function renderEditCard(app, cardId, deckId) {
         <input type="file" id="image-picker" accept="image/*" class="hidden" />
 
         <div>
-          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">Type</label>
-          <select id="edit-type"
-            class="w-full h-12 bg-surface border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent">
-            ${typeOpts.map(([v, l]) => `<option value="${v}"${v === cardType ? ' selected' : ''}>${l}</option>`).join('')}
-          </select>
+          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">Label (optional)</label>
+          <input id="edit-type" list="edit-type-list" maxlength="30" value="${escHtml(cardType === 'vocab' ? '' : cardType)}" placeholder="e.g. Idiom, Pattern, Rule"
+            class="w-full h-12 bg-surface border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
+          ${typeDatalist('edit-type-list', siblings)}
         </div>
 
         <div class="flex gap-3 pt-2 pb-4">
           <button onclick="navigate('${backHash}')"
             class="flex-1 h-12 border border-line rounded-xl text-muted hover:text-ink transition-colors">Cancel</button>
-          <button id="save-btn" onclick="saveCard(${escHtml(JSON.stringify(cardId || ''))}, ${escHtml(JSON.stringify(deckId || ''))})"
+          <button id="save-btn" onclick="saveCard(${escHtml(JSON.stringify(cardId || ''))}, ${escHtml(JSON.stringify(deckId || ''))}, ${escHtml(JSON.stringify(backHash))})"
             class="flex-1 h-12 bg-accent hover:bg-accent-dark rounded-xl text-on-accent font-semibold transition-colors">Save</button>
         </div>
       </div>
@@ -1395,7 +1496,7 @@ async function renderEditCard(app, cardId, deckId) {
   });
 }
 
-async function saveCard(cardId, deckId) {
+async function saveCard(cardId, deckId, backHash) {
   const front = document.getElementById('edit-front').value.trim();
   const back = document.getElementById('edit-back').value.trim();
   const example = document.getElementById('edit-example').value.trim();
@@ -1419,7 +1520,7 @@ async function saveCard(cardId, deckId) {
     btn.textContent = 'Offline — not saved. Tap to retry';
     return;
   }
-  navigate(deckId ? `#/decks/${deckId}` : '#/');
+  navigate(backHash);
 }
 
 /* ════════════════════════════════════════

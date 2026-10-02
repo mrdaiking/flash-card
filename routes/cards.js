@@ -8,8 +8,8 @@ router.get('/decks/:id/cards', (req, res) => {
   res.json(cards);
 });
 
-const CARD_TYPES = ['vocab', 'collocation', 'phrasal', 'idiom', 'sentence'];
-const normType = t => CARD_TYPES.includes(t) ? t : 'vocab';
+// Free-text label per card (legacy values like 'phrasal' stay valid; 'vocab' = no label).
+const normType = t => (typeof t === 'string' && t.trim() ? t.trim().slice(0, 30) : 'vocab');
 
 router.post('/decks/:id/cards', (req, res) => {
   const { front, back, example = '', type = 'vocab' } = req.body;
