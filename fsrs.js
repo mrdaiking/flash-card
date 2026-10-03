@@ -4,9 +4,9 @@ const { fsrs, generatorParameters, default_w } = require('ts-fsrs');
 const DAY = 86400000;
 
 // 85% default target retention (docs/architecture.md: a lighter initial
-// review load than the usual 90%). Short-term steps off: the Study screen
-// fetches its due list once per session, so a card never comes back within
-// the same session anyway — every interval is whole days.
+// review load than the usual 90%). Short-term steps off: every interval is
+// whole days. A card rated Again does come back at the end of the session,
+// but only as client-side practice — that second pass is never sent here.
 const DEFAULT_RETENTION = 0.85;
 const schedulers = new Map();
 function scheduler(retention = DEFAULT_RETENTION) {
@@ -46,6 +46,13 @@ function review(row, rating, now = new Date(), retention = DEFAULT_RETENTION) {
     next_review: next.due.getTime(),
     interval: next.scheduled_days,
   };
+}
+
+// Next interval in days for each rating 1-4, shown under the rating buttons.
+// Fuzz can shift the real interval by a day or so; good enough for a preview.
+function previewIntervals(row, now = new Date(), retention = DEFAULT_RETENTION) {
+  const p = scheduler(retention).repeat(toFsrsCard(row), now);
+  return [1, 2, 3, 4].map(g => p[g].card.scheduled_days);
 }
 
 // One-time seed from SM-2 state (the approach fsrs-rs uses for Anki's
@@ -100,4 +107,4 @@ function studyOrder(cards) {
   return spread(roundRobinByDeck(cards.filter(c => c.state !== 0)), roundRobinByDeck(cards.filter(c => c.state === 0)));
 }
 
-module.exports = { review, seedFromSm2, newCardDue, studyOrder, NEW_PER_DAY, DEFAULT_RETENTION, DAY };
+module.exports = { review, previewIntervals, seedFromSm2, newCardDue, studyOrder, NEW_PER_DAY, DEFAULT_RETENTION, DAY };

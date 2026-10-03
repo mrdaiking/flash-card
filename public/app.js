@@ -308,6 +308,7 @@ function router() {
   if (!token) { showAuth(); return; }
   const hash = window.location.hash || '#/';
   const app = document.getElementById('app');
+  if (!hash.startsWith('#/study/')) commitPendingRate();
   let m;
 
   // Study is a full-screen, one-handed flow with its own back button —
@@ -1060,7 +1061,7 @@ async function renderStudy(app, deckId, favoritesOnly = false, startId = null) {
     return;
   }
 
-  study = { cards, index: 0, flipped: false, ratings: { 1: 0, 2: 0, 3: 0, 4: 0 }, deckId, favoritesOnly };
+  study = { cards, index: 0, flipped: false, ratings: { 1: 0, 2: 0, 3: 0, 4: 0 }, deckId, favoritesOnly, pendingRate: null };
   drawStudyCard();
 }
 
@@ -1116,7 +1117,7 @@ function drawStudyCard() {
   const { cards, index, flipped, ratings, deckId } = study;
 
   if (index >= cards.length) {
-    const total = cards.length;
+    const total = cards.filter(c => !c.practice).length;
     app.innerHTML = `
       <div class="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center">
         <div class="text-6xl mb-4">✅</div>
@@ -1144,7 +1145,8 @@ function drawStudyCard() {
           class="h-12 px-8 bg-accent hover:bg-accent-dark rounded-xl text-on-accent font-semibold transition-colors">
           Back to Decks
         </button>
-      </div>`;
+      </div>
+      ${undoToastHTML()}`;
     return;
   }
 
@@ -1199,6 +1201,7 @@ function drawStudyCard() {
         <div class="card-scene w-full animate-card-in" id="card-scene" onclick="flipCard()">
           <div class="card-inner w-full${flipped ? ' flipped' : ''}" id="card-inner">
             <div class="card-front bg-surface rounded-2xl p-6 pb-12 flex flex-col items-center justify-center cursor-pointer shadow-lg shadow-ink/10 select-none">
+              ${card.practice ? `<p class="mb-3 text-xs font-semibold text-rate-again bg-rate-again/10 px-2.5 py-1 rounded-full">Practice round · won't change its schedule</p>` : ''}
               ${fieldLabel(info.front_label, 'Front')}<div class="prose-content text-ink text-xl text-center leading-relaxed">${md(card.front)}</div>
               <p class="text-muted text-xs mt-4">tap to reveal</p>
               <button id="fav-btn-front" onclick="event.stopPropagation(); toggleFavoriteInStudy()"
@@ -1213,6 +1216,7 @@ function drawStudyCard() {
               </button>
             </div>
             <div class="card-back bg-accent/5 border border-accent/20 rounded-2xl p-5 pb-12 flex flex-col items-center justify-center cursor-pointer shadow-lg shadow-ink/10 select-none">
+              <div class="front-echo prose-content text-muted text-sm text-center w-full mb-3 pb-3 border-b border-accent/20">${md(card.front)}</div>
               ${badge ? `<div class="mb-2">${badge}</div>` : ''}
               ${fieldLabel(info.back_label, 'Back')}<div class="prose-content text-ink text-lg text-center leading-relaxed">${md(card.back)}</div>
               ${card.example ? `
@@ -1234,31 +1238,20 @@ function drawStudyCard() {
         </div>
       </div>
 
-      ${!flipped ? `
-        <p class="text-center text-muted text-xs mt-4">swipe left = Again &nbsp;·&nbsp; swipe right = Easy</p>` : ''}
+      <p id="swipe-hint" class="${flipped ? '' : 'invisible'} text-center text-muted text-xs mt-4">swipe left = Again &nbsp;·&nbsp; swipe right = Good</p>
     </div>
 
     <!-- Rating buttons: pinned to the bottom of the viewport so they're always
          reachable without scrolling, no matter how long the card content is. -->
     <div id="rating-btns" class="${flipped ? '' : 'invisible'} fixed bottom-0 left-0 right-0 z-30 bg-paper/95 backdrop-blur border-t border-line/60 px-4 pt-3 safe-bottom grid grid-cols-2 gap-2">
-      <button onclick="rate(1)"
-        class="h-14 bg-rate-again/10 border border-rate-again/40 rounded-xl text-rate-again font-semibold hover:bg-rate-again/20 active:scale-95 transition-all text-sm">
-        Again
-      </button>
-      <button onclick="rate(2)"
-        class="h-14 bg-rate-hard/10 border border-rate-hard/40 rounded-xl text-rate-hard font-semibold hover:bg-rate-hard/20 active:scale-95 transition-all text-sm">
-        Hard
-      </button>
-      <button onclick="rate(3)"
-        class="h-14 bg-rate-good/10 border border-rate-good/40 rounded-xl text-rate-good font-semibold hover:bg-rate-good/20 active:scale-95 transition-all text-sm">
-        Good
-      </button>
-      <button onclick="rate(4)"
-        class="h-14 bg-rate-easy/10 border border-rate-easy/40 rounded-xl text-rate-easy font-semibold hover:bg-rate-easy/20 active:scale-95 transition-all text-sm">
-        Easy
-      </button>
+      ${[[1, 'Again', 'again'], [2, 'Hard', 'hard'], [3, 'Good', 'good'], [4, 'Easy', 'easy']].map(([r, label, tone]) => `
+      <button onclick="rate(${r})"
+        class="h-14 bg-rate-${tone}/10 border border-rate-${tone}/40 rounded-xl text-rate-${tone} font-semibold hover:bg-rate-${tone}/20 active:scale-95 transition-all text-sm flex flex-col items-center justify-center leading-tight">
+        ${label}${!card.practice && card.preview ? `<span class="text-xs font-normal opacity-80 mt-0.5">${fmtInterval(card.preview[r - 1])}</span>` : ''}
+      </button>`).join('')}
       <div class="col-span-2 h-3"></div>
     </div>
+    ${undoToastHTML()}
   `;
 
   setupSwipe();
@@ -1270,6 +1263,7 @@ function flipCard() {
   study.flipped = !study.flipped;
   document.getElementById('card-inner')?.classList.toggle('flipped', study.flipped);
   document.getElementById('rating-btns')?.classList.toggle('invisible', !study.flipped);
+  document.getElementById('swipe-hint')?.classList.toggle('invisible', !study.flipped);
 
   const c = study.cards[study.index];
   if (study.flipped) {
@@ -1294,16 +1288,74 @@ function trackWrite(promise) {
   return promise;
 }
 
+// A rating is held for UNDO_MS before it's sent, so Undo is purely local (no
+// server rollback). It's sent early by the next rating, leaving the session,
+// or the app going to the background.
+const UNDO_MS = 5000;
+const RATING_NAMES = { 1: 'Again', 2: 'Hard', 3: 'Good', 4: 'Easy' };
+
 async function rate(rating) {
-  if (!study) return;
+  if (!study || study.index >= study.cards.length) return;
   const card = study.cards[study.index];
-  study.ratings[rating]++;
+  commitPendingRate();
+  // Forgotten cards come back at the end of the session as practice only:
+  // their first rating is the one FSRS sees.
+  const requeued = rating === 1;
+  if (requeued) study.cards.push({ ...card, practice: true });
+  if (!card.practice) study.ratings[rating]++;
+  study.pendingRate = { card, rating, at: Date.now(), requeued, timer: setTimeout(commitPendingRate, UNDO_MS) };
   study.index++;
   study.flipped = false;
   window.speechSynthesis?.cancel();
-  trackWrite(api(`/api/cards/${card.id}/review`, { method: 'POST', body: JSON.stringify({ rating, at: Date.now() }) }).catch(() => {}));
   drawStudyCard();
 }
+
+function commitPendingRate() {
+  const p = study?.pendingRate;
+  if (!p) return;
+  clearTimeout(p.timer);
+  study.pendingRate = null;
+  document.getElementById('undo-toast')?.remove();
+  if (p.card.practice) return;
+  trackWrite(api(`/api/cards/${p.card.id}/review`, {
+    method: 'POST', keepalive: true, body: JSON.stringify({ rating: p.rating, at: p.at }),
+  }).catch(() => {}));
+}
+
+function undoRate() {
+  const p = study?.pendingRate;
+  if (!p) return;
+  clearTimeout(p.timer);
+  study.pendingRate = null;
+  if (p.requeued) study.cards.pop();
+  if (!p.card.practice) study.ratings[p.rating]--;
+  study.index--;
+  study.flipped = true;
+  drawStudyCard();
+}
+
+function undoToastHTML() {
+  const p = study?.pendingRate;
+  if (!p) return '';
+  return `
+    <div id="undo-toast" class="fixed left-4 right-4 z-40 flex items-center justify-between gap-3 bg-ink text-paper rounded-xl pl-4 pr-2 h-12 shadow-lg"
+      style="bottom: calc(env(safe-area-inset-bottom) + 9.5rem)">
+      <span class="text-sm">Rated ${RATING_NAMES[p.rating]}${p.requeued ? ' · it comes back at the end' : ''}</span>
+      <button onclick="undoRate()" class="h-10 px-4 font-semibold text-paper underline underline-offset-4">Undo</button>
+    </div>`;
+}
+
+// Next-interval label under a rating button.
+function fmtInterval(days) {
+  if (days < 1) return '<1d';
+  if (days < 30) return `${days}d`;
+  if (days < 365) return `${Math.round(days / 30)}mo`;
+  return `${(days / 365).toFixed(1).replace(/\.0$/, '')}y`;
+}
+
+// Leaving or backgrounding the app sends a held rating right away.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') commitPendingRate(); });
+window.addEventListener('pagehide', commitPendingRate);
 
 // Leaving study (back arrow or "Back to Decks") always routes through here so
 // due-count/favorite state on the screen you land on is fresh immediately.
@@ -1313,10 +1365,12 @@ async function editCurrentCard() {
   const [path, query = ''] = window.location.hash.split('?');
   const params = new URLSearchParams(query);
   params.set('start', c.id);
+  commitPendingRate();
   await Promise.all(study.pending || []);
   navigate(`#/cards/${c.id}/edit?deck=${c.deck_id}&ret=${encodeURIComponent(`${path}?${params}`)}`);
 }
 async function leaveStudy(hash) {
+  commitPendingRate();
   await Promise.all(study?.pending || []);
   navigate(hash);
 }
@@ -1327,8 +1381,9 @@ function setupSwipe() {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let startX = 0, startY = 0, dragging = false;
 
+  // Swipes rate, so they only work once the answer is showing.
   scene.addEventListener('touchstart', e => {
-    if (study.flipped) return;
+    if (!study.flipped) return;
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     dragging = true;
@@ -1336,7 +1391,7 @@ function setupSwipe() {
   }, { passive: true });
 
   scene.addEventListener('touchmove', e => {
-    if (!dragging || study.flipped || reduceMotion) return;
+    if (!dragging || !study.flipped || reduceMotion) return;
     const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
     if (Math.abs(dy) > Math.abs(dx) || Math.abs(dx) < 10) return; // vertical scroll or jitter — leave taps crisp
@@ -1345,12 +1400,13 @@ function setupSwipe() {
   }, { passive: true });
 
   scene.addEventListener('touchend', e => {
+    if (!dragging) return;
     dragging = false;
     const dx = e.changedTouches[0].clientX - startX;
     const dy = e.changedTouches[0].clientY - startY;
     scene.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s';
 
-    if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) || study.flipped) {
+    if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) || !study.flipped) {
       scene.style.transform = '';
       scene.style.opacity = '';
       return;
@@ -1360,8 +1416,7 @@ function setupSwipe() {
       scene.style.transform = `translateX(${dir * 500}px) rotate(${dir * 20}deg)`;
       scene.style.opacity = '0';
     }
-    flipCard();
-    setTimeout(() => rate(dx < 0 ? 1 : 4), reduceMotion ? 0 : 300);
+    setTimeout(() => rate(dx < 0 ? 1 : 3), reduceMotion ? 0 : 300);
   }, { passive: true });
 }
 

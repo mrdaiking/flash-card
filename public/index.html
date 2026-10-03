@@ -113,6 +113,8 @@
     .prose-content code { font-size: 0.85em; background: rgb(var(--color-base)); padding: 0.1em 0.3em; border-radius: 0.25rem; }
     .prose-content pre code { background: transparent; padding: 0; }
     .prose-content p { margin: 0.25rem 0; }
+    /* Question repeated small on the answer face: keep its images to a thumbnail. */
+    .front-echo img { max-height: 5rem; }
 
     /* Motion — all gated behind prefers-reduced-motion so it's opt-out, not forced. */
     @media (prefers-reduced-motion: no-preference) {

@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../db');
-const { review, newCardDue, studyOrder, DAY } = require('../fsrs');
+const { review, previewIntervals, newCardDue, studyOrder, DAY } = require('../fsrs');
 const router = express.Router();
 
 router.get('/decks/:id/cards', (req, res) => {
@@ -74,30 +74,42 @@ router.post('/decks/:id/import-rows', (req, res) => {
 // using it filter by next_review themselves.
 const dueUntil = req => Date.now() + Math.min(Math.max(Number(req.query.ahead) || 0, 0), 7) * 86400000;
 
+// Study lists carry `preview` = next interval in days for Again/Hard/Good/Easy,
+// computed as if rated now (favorites can be rated before they're due).
+const retentionOf = db.prepare('SELECT target_retention FROM decks WHERE id = ?');
+function withPreview(cards) {
+  const now = Date.now();
+  const byDeck = new Map();
+  return cards.map(c => {
+    if (!byDeck.has(c.deck_id)) byDeck.set(c.deck_id, retentionOf.get(c.deck_id)?.target_retention ?? undefined);
+    return { ...c, preview: previewIntervals(c, new Date(now), byDeck.get(c.deck_id)) };
+  });
+}
+
 // Must come before /decks/:id/due to avoid "due" matching as a deck id
 router.get('/cards/due', (req, res) => {
   const cards = db.prepare('SELECT * FROM cards WHERE next_review <= ? ORDER BY next_review ASC').all(dueUntil(req));
-  res.json(studyOrder(cards));
+  res.json(withPreview(studyOrder(cards)));
 });
 
 router.get('/decks/:id/due', (req, res) => {
   const cards = db.prepare(
     'SELECT * FROM cards WHERE deck_id = ? AND next_review <= ? ORDER BY next_review ASC'
   ).all(req.params.id, dueUntil(req));
-  res.json(studyOrder(cards));
+  res.json(withPreview(studyOrder(cards)));
 });
 
 // Favorited cards — ignores next_review entirely (studyable on demand, not gated by SM-2 due-date).
 router.get('/cards/favorites', (req, res) => {
   const cards = db.prepare('SELECT * FROM cards WHERE is_favorite = 1 ORDER BY next_review ASC').all();
-  res.json(cards);
+  res.json(withPreview(cards));
 });
 
 router.get('/decks/:id/favorites', (req, res) => {
   const cards = db.prepare(
     'SELECT * FROM cards WHERE deck_id = ? AND is_favorite = 1 ORDER BY next_review ASC'
   ).all(req.params.id);
-  res.json(cards);
+  res.json(withPreview(cards));
 });
 
 router.post('/cards/:id/favorite', (req, res) => {
