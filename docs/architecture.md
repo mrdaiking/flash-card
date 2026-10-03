@@ -42,6 +42,8 @@ Cập nhật lần cuối: 2026-09-26. Nguồn gốc: doc kiến trúc trên cla
 - Rải lịch học thẻ mới ra vài tuần thay vì đẩy hết vào hàng đợi ôn cùng lúc, tránh backlog-dread ngay sau import.
 - Bản đầu: thuần CSV (front/back bắt buộc, tag tuỳ chọn). Chưa hỗ trợ .apkg (binary SQLite của Anki).
 
+Hướng dẫn viết thẻ, định dạng CSV và prompt để AI tạo thẻ: [card-writing-guide.md](card-writing-guide.md).
+
 **[Đã build — chưa commit/deploy] CSV import v1** — màn hình riêng `#/decks/:id/import`:
 - Nhận file CSV/TSV hoặc dán text; tự nhận delimiter (tab / `|` / `,`), parser hỗ trợ ô có ngoặc kép (dấu phẩy, xuống dòng, `""`). Định dạng cũ `front | back` vẫn dán được.
 - Map cột thủ công Front / Back / Example (tuỳ chọn); tự nhận header nếu có cột tên front/back/question/answer/term/definition.
