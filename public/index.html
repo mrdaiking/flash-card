@@ -106,6 +106,15 @@
     .prose-content code { font-size: 0.85em; background: rgb(var(--color-base)); padding: 0.1em 0.3em; border-radius: 0.25rem; }
     .prose-content pre code { background: transparent; padding: 0; }
     .prose-content p { margin: 0.25rem 0; }
+    /* iOS-style switch and round checkbox (import screen). */
+    .ios-switch { -webkit-appearance: none; appearance: none; flex-shrink: 0; position: relative; width: 51px; height: 31px; border-radius: 999px; background: rgb(var(--color-line)); transition: background 0.2s; cursor: pointer; }
+    .ios-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 999px; background: #fff; box-shadow: 0 2px 4px rgb(0 0 0 / 0.2); transition: transform 0.2s; }
+    .ios-switch:checked { background: rgb(var(--color-rate-easy)); }
+    .ios-switch:checked::after { transform: translateX(20px); }
+    .ios-check { -webkit-appearance: none; appearance: none; flex-shrink: 0; width: 22px; height: 22px; border-radius: 999px; border: 1.5px solid rgb(var(--color-muted) / 0.6); cursor: pointer; }
+    .ios-check:checked { border-color: rgb(var(--color-accent)); background: rgb(var(--color-accent)) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") center / 14px no-repeat; }
+    .ios-check:disabled { opacity: 0.35; cursor: default; }
+    :root.dark .ios-check:checked { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231D1B18' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E"); }
     /* Card text: Japanese needs more leading than Latin/Vietnamese at large sizes
        (lang comes from the deck's read-aloud language, see cardText() in app.js). */
     .card-text:lang(ja) { line-height: 1.7; letter-spacing: 0.02em; }

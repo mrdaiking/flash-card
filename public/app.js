@@ -852,31 +852,24 @@ async function renderImport(app, deckId) {
   imp = { deckId, existing: new Set(cards.map(c => CSV.dedupKey(c.front))), table: [], width: 0, header: false, map: {}, rows: [], spreadDays: 0, onlyFlagged: false };
 
   app.innerHTML = `
-    <div class="p-4 pt-6">
-      <div class="flex items-center gap-2 mb-5">
-        <button onclick="navigate('#/decks/${deckId}')"
-          class="w-10 h-10 flex items-center justify-center text-muted hover:text-ink transition-colors -ml-2 flex-shrink-0">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-          </svg>
-        </button>
-        <div class="flex-1 min-w-0">
-          <h1 class="text-xl font-bold text-ink font-heading">Import Cards</h1>
-          <p class="text-sm text-muted truncate">into ${escHtml(deck.name)}</p>
-        </div>
-      </div>
+    <div class="px-4 pt-1 pb-44">
+      <button onclick="navigate('#/decks/${deckId}')" class="h-11 -ml-2 pr-2 flex items-center text-[17px] text-accent active:opacity-60 max-w-full">${ICON.chevronLeft}<span class="truncate">${escHtml(deck.name)}</span></button>
+      <h1 class="px-1 text-[34px] leading-[41px] font-bold text-ink font-heading">Import</h1>
+      <p class="px-1 mt-1 text-[15px] text-muted">Cards from a CSV / TSV file or pasted text.</p>
 
-      <p class="text-sm text-muted mb-3">A CSV/TSV file, or one card per line as <code class="text-accent bg-base px-1 rounded">front | back</code>.</p>
-      <label class="flex items-center justify-center h-12 border border-dashed border-line rounded-xl text-ink/80 hover:border-accent/50 cursor-pointer mb-3">
-        <input type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" class="hidden" onchange="impLoadFile(this)">
-        Choose a file…
-      </label>
-      <textarea id="imp-paste" rows="4" placeholder="…or paste here"
-        class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink text-sm font-mono focus:outline-none focus:border-accent resize-y"></textarea>
-      <button onclick="impLoadText(document.getElementById('imp-paste').value)"
-        class="w-full h-11 mt-2 border border-line rounded-xl text-ink/80 hover:text-ink hover:border-accent/50 transition-colors">Preview pasted text</button>
+      ${groupLabel('Source')}
+      <section class="bg-surface rounded-[14px] overflow-hidden">
+        <div class="pl-4"><label class="min-h-12 pr-4 flex items-center justify-between border-b border-line cursor-pointer active:opacity-60">
+          <span class="text-[17px] text-accent">Choose a file</span>${ICON.chevronRight}
+          <input type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" class="hidden" onchange="impLoadFile(this)">
+        </label></div>
+        <textarea id="imp-paste" rows="5" aria-label="Paste cards" placeholder="…or paste here, e.g.&#10;front,back,example&#10;put off,postpone,We put off the launch."
+          class="w-full bg-transparent px-4 py-3 text-[15px] leading-6 text-ink font-mono placeholder:text-muted/70 resize-y focus:outline-none border-b border-line"></textarea>
+        <button onclick="impLoadText(document.getElementById('imp-paste').value)" class="w-full min-h-12 px-4 text-left text-[17px] text-accent active:bg-base">Preview pasted text</button>
+      </section>
+      <p class="mt-1.5 px-4 text-[13px] text-muted">Header row: front, back, example (or question / answer, term / definition). Comma, tab or | between columns. Best results: one fact per card, short answers.</p>
 
-      <div id="imp-body" class="mt-6"></div>
+      <div id="imp-body"></div>
     </div>
   `;
 }
@@ -890,7 +883,7 @@ function impLoadText(text) {
   text = text.replace(/^﻿/, '');
   imp.table = CSV.parseDelimited(text, CSV.detectDelimiter(text));
   if (!imp.table.length) {
-    document.getElementById('imp-body').innerHTML = '<p class="text-muted text-sm text-center py-6">Nothing to import.</p>';
+    document.getElementById('imp-body').innerHTML = '<p class="mt-6 px-4 text-[15px] text-muted">Nothing to import: no rows found.</p>';
     return;
   }
   imp.width = Math.max(...imp.table.map(r => r.length));
@@ -933,22 +926,24 @@ const impIncluded = r => !r.error && !r.dup && !r.skip;
 function impRender() {
   const label = i => (imp.header && imp.table[0][i]?.trim()) || `Column ${i + 1}`;
   const options = (sel, optional) =>
-    (optional ? `<option value="-1"${sel < 0 ? ' selected' : ''}>— none —</option>` : '') +
+    (optional ? `<option value="-1"${sel < 0 ? ' selected' : ''}>None</option>` : '') +
     Array.from({ length: imp.width }, (_, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${escHtml(label(i))}</option>`).join('');
-  const select = (field, optional) => `
-    <label class="block">
-      <span class="text-xs font-semibold text-muted uppercase">${field}${optional ? ' (optional)' : ''}</span>
+  const select = (field, name, optional, last) => `
+    <div class="pl-4"><label class="min-h-12 pr-4 flex items-center justify-between gap-3 ${last ? '' : 'border-b border-line'}">
+      <span class="text-[17px] text-ink">${name}${optional ? ' <span class="text-muted">(optional)</span>' : ''}</span>
       <select onchange="imp.map.${field} = +this.value; impBuildRows(); impRender()"
-        class="mt-1 w-full h-11 bg-surface border border-line rounded-xl px-3 text-ink text-sm focus:outline-none focus:border-accent">${options(imp.map[field], optional)}</select>
-    </label>`;
+        class="max-w-[55%] h-8 bg-base rounded-lg px-2 text-[15px] text-ink focus:outline-none">${options(imp.map[field], optional)}</select>
+    </label></div>`;
 
   document.getElementById('imp-body').innerHTML = `
-    <h2 class="text-sm font-semibold text-muted uppercase mb-3">Columns</h2>
-    <label class="flex items-center gap-2 text-sm text-ink mb-3">
-      <input type="checkbox" class="w-4 h-4 accent-accent" ${imp.header ? 'checked' : ''} onchange="imp.header = this.checked; impBuildRows(); impRender()">
-      First row is a header
-    </label>
-    <div class="grid grid-cols-3 gap-2 mb-6">${select('front')}${select('back')}${select('example', true)}</div>
+    ${groupLabel('Columns')}
+    <section class="bg-surface rounded-[14px] overflow-hidden">
+      <div class="pl-4"><label class="min-h-12 pr-4 flex items-center justify-between gap-3 border-b border-line">
+        <span class="text-[17px] text-ink">First row is a header</span>
+        <input type="checkbox" class="ios-switch" ${imp.header ? 'checked' : ''} onchange="imp.header = this.checked; impBuildRows(); impRender()">
+      </label></div>
+      ${select('front', 'Front')}${select('back', 'Back')}${select('example', 'Example', true, true)}
+    </section>
     <div id="imp-review"></div>
   `;
   impRenderReview();
@@ -962,55 +957,58 @@ function impRenderReview() {
   const nBad = rows.filter(r => r.error).length;
   const perDay = imp.spreadDays ? Math.ceil(ready / imp.spreadDays) : ready;
   const shown = rows.map((r, i) => [r, i]).filter(([r]) => !imp.onlyFlagged || r.error || r.dup || r.warn.length);
-  const chip = (cls, text) => `<span class="text-[11px] px-2 py-0.5 rounded-full ${cls}">${text}</span>`;
+  const flag = (cls, text) => `<p class="text-[13px] leading-[18px] ${cls}">${escHtml(text)}</p>`;
+  const seg = (on, label, value) => `<button onclick="imp.onlyFlagged = ${value}; impRenderReview()" class="h-7 px-3 rounded-[7px] text-[13px] font-semibold ${on ? 'bg-surface text-ink shadow-sm' : 'text-muted'}">${label}</button>`;
+  const summary = [
+    `${ready} ready`,
+    nWarn && `<span class="text-rate-hard">${nWarn} to double-check</span>`,
+    nDup && `${nDup} duplicate${nDup > 1 ? 's' : ''} skipped`,
+    nBad && `<span class="text-rate-again">${nBad} incomplete</span>`,
+  ].filter(Boolean).join(' · ');
 
   document.getElementById('imp-review').innerHTML = `
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="text-sm font-semibold text-muted uppercase">Review · ${ready} of ${rows.length}</h2>
-      <label class="flex items-center gap-2 text-xs text-muted">
-        <input type="checkbox" class="accent-accent" ${imp.onlyFlagged ? 'checked' : ''} onchange="imp.onlyFlagged = this.checked; impRenderReview()">
-        Flagged only
-      </label>
+    <div class="mt-7 mb-1.5 px-4 flex items-center justify-between">
+      <span class="text-[13px] text-muted uppercase">Review · ${rows.length} row${rows.length === 1 ? '' : 's'}</span>
+      <span class="flex p-0.5 rounded-[9px] bg-base">${seg(!imp.onlyFlagged, 'All', false)}${seg(imp.onlyFlagged, 'Flagged', true)}</span>
     </div>
-    <div class="flex flex-wrap gap-2 mb-3">
-      ${nWarn ? chip('bg-rate-hard/10 text-rate-hard', `${nWarn} to double-check`) : ''}
-      ${nDup ? chip('bg-line/60 text-muted', `${nDup} duplicate${nDup > 1 ? 's' : ''} skipped`) : ''}
-      ${nBad ? chip('bg-rate-again/10 text-rate-again', `${nBad} incomplete`) : ''}
-    </div>
+    <p class="mb-2 px-4 text-[13px] text-muted">${summary}</p>
 
-    <div class="space-y-2 mb-6">
-      ${shown.length === 0 ? '<p class="text-muted text-sm text-center py-6">Nothing flagged.</p>' : shown.map(([r, i]) => `
-        <div class="bg-surface rounded-xl p-3 border ${r.error ? 'border-rate-again/40' : r.dup ? 'border-line opacity-60' : r.warn.length ? 'border-rate-hard/40' : 'border-transparent'}">
-          <div class="flex items-start gap-3">
-            <input type="checkbox" class="mt-2.5 w-5 h-5 accent-accent flex-shrink-0" ${impIncluded(r) ? 'checked' : ''} ${r.error || r.dup ? 'disabled' : ''}
-              onchange="imp.rows[${i}].skip = !this.checked; impRenderReview()">
-            <div class="flex-1 min-w-0 space-y-1.5">
-              <textarea rows="1" placeholder="Front" onchange="impEdit(${i}, 'front', this.value)"
-                class="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-ink font-medium resize-y focus:outline-none focus:border-accent">${escHtml(r.front)}</textarea>
-              <textarea rows="1" placeholder="Back" onchange="impEdit(${i}, 'back', this.value)"
-                class="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-ink resize-y focus:outline-none focus:border-accent">${escHtml(r.back)}</textarea>
-              ${r.example ? `<p class="text-xs text-muted italic truncate">${escHtml(previewParts(r.example).text)}</p>` : ''}
-              ${r.error || r.dup || r.warn.length ? `<div class="flex flex-wrap gap-1.5">
-                ${r.error ? chip('bg-rate-again/10 text-rate-again', r.error) : ''}
-                ${r.dup ? chip('bg-line/60 text-muted', r.dup) : ''}
-                ${r.warn.map(w => chip('bg-rate-hard/10 text-rate-hard', w)).join('')}
-              </div>` : ''}
-            </div>
+    ${shown.length === 0 ? '<p class="px-4 py-4 text-[15px] text-muted">Nothing flagged.</p>' : `
+    <section class="bg-surface rounded-[14px] overflow-hidden">
+      ${shown.map(([r, i], n) => `
+        <div class="pl-3 ${r.dup ? 'opacity-55' : ''}"><div class="flex items-start gap-3 pr-4 py-2.5 ${n < shown.length - 1 ? 'border-b border-line' : ''}">
+          <input type="checkbox" class="ios-check mt-2" aria-label="Include row ${i + 1}" ${impIncluded(r) ? 'checked' : ''} ${r.error || r.dup ? 'disabled' : ''}
+            onchange="imp.rows[${i}].skip = !this.checked; impRenderReview()">
+          <div class="flex-1 min-w-0">
+            <textarea rows="1" aria-label="Front, row ${i + 1}" placeholder="Front" onchange="impEdit(${i}, 'front', this.value)"
+              class="w-full bg-transparent py-1 text-[17px] leading-6 text-ink resize-none focus:outline-none focus:bg-base rounded">${escHtml(r.front)}</textarea>
+            <textarea rows="1" aria-label="Back, row ${i + 1}" placeholder="Back" onchange="impEdit(${i}, 'back', this.value)"
+              class="w-full bg-transparent py-1 text-[15px] leading-[22px] text-muted resize-none focus:outline-none focus:bg-base rounded">${escHtml(r.back)}</textarea>
+            ${r.example ? `<p class="text-[13px] text-muted/80 italic truncate">${escHtml(previewParts(r.example).text)}</p>` : ''}
+            ${r.error ? flag('text-rate-again', r.error) : ''}${r.dup ? flag('text-muted', r.dup) : ''}${r.warn.map(w => flag('text-rate-hard', w)).join('')}
           </div>
-        </div>`).join('')}
+        </div></div>`).join('')}
+    </section>`}
+
+    ${groupLabel('Pacing')}
+    <section class="bg-surface rounded-[14px] overflow-hidden">
+      <div class="pl-4"><label class="min-h-12 pr-4 flex items-center justify-between gap-3">
+        <span class="text-[17px] text-ink">New cards</span>
+        <select onchange="imp.spreadDays = +this.value; impRenderReview()" class="h-8 bg-base rounded-lg px-2 text-[15px] text-ink focus:outline-none">
+          ${SPREAD_OPTIONS.map(([d, l]) => `<option value="${d}"${d === imp.spreadDays ? ' selected' : ''}>${l}</option>`).join('')}
+        </select>
+      </label></div>
+    </section>
+    <p class="mt-1.5 px-4 text-[13px] text-muted">${imp.spreadDays ? `About ${perDay} new card${perDay !== 1 ? 's' : ''} a day, so a big import doesn’t land as one backlog.` : 'Every imported card is due right away.'}</p>
+
+    <!-- Import stays reachable without scrolling past every row -->
+    <div class="fixed left-0 right-0 z-30 px-4 pt-2 pb-3 bg-paper/95 backdrop-blur border-t border-line"
+      style="bottom: calc(50px + env(safe-area-inset-bottom))">
+      <button id="imp-submit" onclick="impSubmit()" ${ready ? '' : 'disabled'}
+        class="w-full h-[52px] rounded-[14px] text-[17px] font-semibold ${ready ? 'bg-accent text-on-accent active:opacity-80' : 'bg-base text-muted'}">
+        Import ${ready} card${ready !== 1 ? 's' : ''}
+      </button>
     </div>
-
-    <h2 class="text-sm font-semibold text-muted uppercase mb-2">Pacing</h2>
-    <select onchange="imp.spreadDays = +this.value; impRenderReview()"
-      class="w-full h-11 bg-surface border border-line rounded-xl px-3 text-ink text-sm focus:outline-none focus:border-accent">
-      ${SPREAD_OPTIONS.map(([d, l]) => `<option value="${d}"${d === imp.spreadDays ? ' selected' : ''}>${l}</option>`).join('')}
-    </select>
-    <p class="text-xs text-muted mt-1.5 mb-6">${imp.spreadDays ? `≈ ${perDay} new card${perDay !== 1 ? 's' : ''} per day, so a big import doesn't pile up as one backlog.` : 'Every imported card is due right away.'}</p>
-
-    <button id="imp-submit" onclick="impSubmit()" ${ready ? '' : 'disabled'}
-      class="w-full h-12 rounded-xl font-semibold transition-colors ${ready ? 'bg-accent hover:bg-accent-dark text-on-accent' : 'bg-surface text-muted cursor-not-allowed'}">
-      Import ${ready} card${ready !== 1 ? 's' : ''}
-    </button>
   `;
 }
 
