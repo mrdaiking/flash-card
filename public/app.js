@@ -1042,7 +1042,8 @@ async function renderStudy(app, deckId, favoritesOnly = false, startId = null) {
     : (deckId === 'all' ? '/api/cards/due?ahead=3' : `/api/decks/${deckId}/due?ahead=3`);
   let cards = await api(url);
   if (!cards) return;
-  if (!Object.keys(deckById).length) await api('/api/decks'); // template labels + speech language
+  // Deck templates (labels, language, font); refetch if a card's deck isn't known yet.
+  if (cards.some(c => !deckById[c.deck_id])) await api('/api/decks');
   // The list includes the next 3 days so the SW's cached copy stays useful
   // offline; what's actually due is decided by this device's clock.
   if (!favoritesOnly) cards = cards.filter(c => c.next_review <= Date.now());

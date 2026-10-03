@@ -109,7 +109,10 @@
     /* Card text: Japanese needs more leading than Latin/Vietnamese at large sizes
        (lang comes from the deck's read-aloud language, see cardText() in app.js). */
     .card-text:lang(ja) { line-height: 1.7; letter-spacing: 0.02em; }
-    /* Per-deck "Serif / Mincho" card font. */
+    /* Japanese text (tagged lang="ja" from the deck's card language) uses
+       Hiragino Sans explicitly, so iOS never falls back to a Mincho face. */
+    [lang="ja"] { font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", YuGothic, "Noto Sans JP", -apple-system, system-ui, sans-serif; }
+    /* Per-deck "Mincho (serif)" card font; declared after so it wins when chosen. */
     .card-serif { font-family: "Hiragino Mincho ProN", "Hiragino Mincho Pro", "Yu Mincho", YuMincho, "Noto Serif JP", "Noto Serif", ui-serif, Georgia, serif; }
 
     /* Motion — all gated behind prefers-reduced-motion so it's opt-out, not forced. */
