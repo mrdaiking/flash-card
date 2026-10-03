@@ -470,9 +470,10 @@ async function renderHome(app) {
         </div>`}
     </div>
 
-    <!-- FAB -->
-    <button onclick="showNewDeckModal()"
-      class="fixed bottom-24 right-5 w-14 h-14 bg-accent hover:bg-accent-dark active:bg-accent-dark rounded-full shadow-lg shadow-ink/20 flex items-center justify-center text-on-accent text-3xl font-light transition-colors z-30">
+    <!-- FAB: clears the bottom nav (~64px + home-indicator inset) by 24px so it isn't hit instead of Stats -->
+    <button onclick="showNewDeckModal()" aria-label="New deck"
+      style="bottom: calc(88px + env(safe-area-inset-bottom))"
+      class="fixed right-5 w-14 h-14 bg-accent hover:bg-accent-dark active:bg-accent-dark rounded-full shadow-lg shadow-ink/20 flex items-center justify-center text-on-accent text-3xl font-light transition-colors z-30">
       +
     </button>
 
@@ -589,7 +590,7 @@ async function renderDeckDetail(app, deckId) {
     </div>
 
     <!-- Thumb bar: sits just above #bottom-nav (~64px + safe area) -->
-    <div class="fixed left-0 right-0 z-30 px-4 pb-2 pt-2 bg-paper/95 backdrop-blur border-t border-line/60 flex gap-2"
+    <div class="fixed left-0 right-0 z-30 px-4 pb-4 pt-2 bg-paper/95 backdrop-blur border-t border-line/60 flex gap-2"
       style="bottom: calc(64px + env(safe-area-inset-bottom))">
       <button onclick="${dueCount > 0 ? `navigate('#/study/${deckId}')` : 'void(0)'}"
         class="flex-1 h-14 ${dueCount > 0 ? 'bg-accent hover:bg-accent-dark text-on-accent' : 'bg-surface text-muted cursor-not-allowed'} rounded-2xl font-semibold text-base transition-colors">
