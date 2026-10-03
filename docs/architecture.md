@@ -139,3 +139,10 @@ Cập nhật lần cuối: 2026-09-26. Nguồn gốc: doc kiến trúc trên cla
 **Chưa có:** Chrome extension (Felix hoãn lại), tag (data model + cột tag khi import), simulator đề xuất target retention, offline cho thêm/sửa thẻ (quyết định không làm), archive Obsidian (không bắt buộc), import .apkg.
 
 **Kiểm tra sau khi deploy lên EC2** (runbook cũ vẫn áp dụng): backup `data/cards.db` trước; sau `npm install` + `pm2 restart anki-pwa --update-env`, kiểm tra có đủ cột FSRS và `settings.silence_threshold_days = 21`, và số thẻ due bằng với bản backup.
+
+## Giao diện (redesign 2026-10)
+
+- Hướng iOS-native: font hệ thống (SF Pro), list nhóm kiểu Settings, một màu nhấn terracotta; token màu ở `public/index.html` (mọi cặp chữ/nền đạt WCAG AA). Icon "spaced dots" sinh bằng `scripts/generate-icons.js`.
+- Tab bar: Today (thay Home) và Progress (Stats). Today: tổng thẻ đến hạn + ước lượng phút (`sec_per_card` từ `/api/stats`) + streak; mỗi deck hiện New / Relearn / Due (`new_due`, `relearn_due` từ `/api/decks`) và lần học gần nhất.
+- Study: không còn thẻ lật 3D; câu hỏi ở trên, đáp án hiện bên dưới; nút "Show answer" ở vùng ngón cái; 4 nút chấm điểm một hàng kèm khoảng cách ôn tiếp theo; menu "⋯" chứa sửa thẻ, yêu thích, đọc to.
+

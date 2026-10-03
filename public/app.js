@@ -106,7 +106,6 @@ function wirePasteImage(textarea) {
 
 /* ── Text-to-Speech ── */
 const speakerOnSVG = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5L6 9H2v6h4l5 4V5z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>`;
-const speakerOffSVG = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5L6 9H2v6h4l5 4V5z"/><line stroke-linecap="round" stroke-linejoin="round" stroke-width="2" x1="23" y1="9" x2="17" y2="15"/><line stroke-linecap="round" stroke-linejoin="round" stroke-width="2" x1="17" y1="9" x2="23" y2="15"/></svg>`;
 
 let ttsEnabled = localStorage.getItem('fc_tts') !== 'false'; // default ON
 
@@ -120,12 +119,10 @@ function cycleTTSMode() {
   updateTTSModeButton();
 }
 
+const TTS_MODE_LABELS = { both: 'Question + answer', front: 'Question only', back: 'Answer only' };
 function updateTTSModeButton() {
-  const btn = document.getElementById('tts-mode-btn');
-  if (!btn) return;
-  const labels = { both: 'Front + Back', front: 'Front only', back: 'Back only' };
-  btn.textContent = labels[ttsMode];
-  btn.title = 'Tap to change what gets spoken';
+  const el = document.getElementById('menu-tts-mode');
+  if (el) el.textContent = TTS_MODE_LABELS[ttsMode];
 }
 
 function stripHtml(html) {
@@ -182,12 +179,8 @@ function toggleTTS() {
 }
 
 function updateTTSButton() {
-  const btn = document.getElementById('tts-btn');
-  if (!btn) return;
-  btn.title = ttsEnabled ? 'Mute TTS' : 'Unmute TTS';
-  btn.innerHTML = ttsEnabled ? speakerOnSVG : speakerOffSVG;
-  btn.classList.toggle('text-accent', ttsEnabled);
-  btn.classList.toggle('text-muted', !ttsEnabled);
+  const el = document.getElementById('menu-tts');
+  if (el) el.textContent = ttsEnabled ? 'On' : 'Off';
 }
 
 /* ── Auth ── */
@@ -362,6 +355,16 @@ window.addEventListener('load', () => {
 });
 
 /* ── Utilities ── */
+// Deck subtitle on Today: when it was last reviewed (unix seconds).
+function lastStudied(sec, total) {
+  if (!total) return 'No cards yet';
+  if (!sec) return 'Not studied yet';
+  const days = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(sec * 1000).setHours(0, 0, 0, 0)) / 86400000);
+  if (days <= 0) return 'Studied today';
+  if (days === 1) return 'Studied yesterday';
+  return days >= 21 ? `Quiet for ${days} days` : `${days} days ago`;
+}
+
 function escHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -398,73 +401,81 @@ function loading(app) {
 ════════════════════════════════════════ */
 async function renderHome(app) {
   loading(app);
-  const [decks, recap] = await Promise.all([api('/api/decks'), api('/api/recap')]);
+  const [decks, stats] = await Promise.all([api('/api/decks'), api('/api/stats')]);
   if (!decks) return;
 
   const totalDue = decks.reduce((s, d) => s + (d.due_count || 0), 0);
+  const totalNew = decks.reduce((s, d) => s + (d.new_due || 0), 0);
   // Home-screen icon badge; needs notification permission on iOS. ponytail: only refreshed on Home render/push.
   (totalDue ? navigator.setAppBadge?.(totalDue) : navigator.clearAppBadge?.())?.catch(() => {});
-  const hasRecap = recap && (recap.new_word_count || recap.reviews_done);
+  const minutes = Math.max(1, Math.round((totalDue * (stats?.sec_per_card || 10)) / 60));
+  const streak = stats?.streak_days || 0;
+  const dateLine = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+
+  const meta = (icon, text) => `<span class="flex items-center gap-1.5">${icon}${text}</span>`;
+  const clockIcon = '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+  const pulseIcon = '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>';
+  const newDot = '<span class="w-2 h-2 rounded-full bg-rate-good" aria-hidden="true"></span>';
 
   app.innerHTML = `
-    <div class="p-4 pt-6">
-      <div class="flex items-center justify-between mb-6">
-        <h1 class="text-[34px] leading-[41px] font-bold text-ink font-heading">Decks</h1>
-        ${totalDue > 0 ? `
-          <button onclick="navigate('#/study/all')"
-            class="bg-accent hover:bg-accent-dark text-on-accent px-4 h-10 rounded-xl text-sm font-semibold transition-colors">
-            Study All (${totalDue})
-          </button>` : ''}
-      </div>
+    <div class="px-4 pt-6 pb-8">
+      <p class="px-1 text-[15px] text-muted">${dateLine}</p>
+      <h1 class="px-1 text-[34px] leading-[41px] font-bold text-ink font-heading">Today</h1>
 
-      ${hasRecap ? `
-        <div onclick="navigate('#/recap')"
-          class="bg-gradient-to-r from-accent/15 to-accent/5 border border-accent/30 rounded-2xl p-4 mb-5 cursor-pointer active:scale-[0.99] transition-transform">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs font-semibold text-accent-dark uppercase mb-1">This week</p>
-              <p class="text-sm text-ink/80">
-                <span class="font-bold text-ink">${recap.new_word_count}</span> new words ·
-                <span class="font-bold text-ink">${recap.reviews_done}</span> reviews
-              </p>
-            </div>
-            <svg class="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-            </svg>
+      <section class="mt-4 bg-surface rounded-[14px] p-[18px] flex flex-col gap-3.5">
+        ${totalDue > 0 ? `
+          <div class="flex items-baseline gap-2">
+            <span class="text-[44px] leading-[48px] font-bold text-ink">${totalDue}</span>
+            <span class="text-[17px] text-ink/80">card${totalDue === 1 ? '' : 's'} to review</span>
           </div>
-        </div>` : ''}
+          <div class="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted">
+            ${meta(clockIcon, `about ${minutes} min`)}
+            ${streak ? meta(pulseIcon, `${streak}-day streak`) : ''}
+            ${totalNew ? meta(newDot, `${totalNew} new`) : ''}
+          </div>
+          <button onclick="navigate('#/study/all')"
+            class="h-[50px] rounded-xl bg-accent text-on-accent text-[17px] font-semibold active:opacity-80 transition-opacity">Start review</button>
+        ` : `
+          <div>
+            <p class="text-[22px] leading-7 font-bold text-ink">All done for today</p>
+            <p class="mt-1 text-[15px] text-muted">${streak ? `${streak}-day streak. ` : ''}Cards come back when they’re due.</p>
+          </div>
+        `}
+      </section>
 
       ${decks.length === 0 ? `
-        <div class="text-center py-20 text-muted">
-          <p class="text-lg font-medium text-muted">No decks yet</p>
-          <p class="text-sm mt-1">Tap + to create your first deck</p>
-        </div>` : `
-        <div class="space-y-3">
-          ${decks.map(d => `
-            <div onclick="navigate('#/decks/${d.id}')"
-              class="bg-surface rounded-2xl p-4 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform">
-              <div>
-                <h2 class="font-semibold text-ink">${escHtml(d.name)}</h2>
-                <p class="text-sm text-muted mt-0.5">${d.total_count || 0} cards</p>
-              </div>
-              <div class="flex items-center gap-3">
-                ${(d.due_count || 0) > 0
-                  ? `<span class="bg-accent text-on-accent text-xs font-bold px-2.5 py-1 rounded-full">${d.due_count}</span>`
-                  : `<span class="text-muted text-xs">Up to date</span>`}
-                <svg class="w-5 h-5 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                </svg>
-              </div>
-            </div>`).join('')}
-        </div>`}
-    </div>
+        <section class="mt-8 px-1">
+          <p class="text-[17px] text-ink font-semibold">No decks yet</p>
+          <p class="mt-1 text-[15px] text-muted">Make a deck, add a few cards, and they’ll show up here when it’s time to review.</p>
+        </section>` : `
+        <div class="mt-8 mb-2 px-4 flex items-baseline justify-between text-[13px]">
+          <span class="text-muted uppercase">Decks</span>
+          <span class="flex gap-3"><span class="text-rate-good">New</span><span class="text-rate-hard">Relearn</span><span class="text-rate-easy">Due</span></span>
+        </div>
+        <section class="bg-surface rounded-[14px] overflow-hidden">
+          ${decks.map((d, i) => {
+            const newDue = d.new_due || 0, relearn = d.relearn_due || 0;
+            const review = Math.max(0, (d.due_count || 0) - newDue - relearn);
+            const count = (n, cls) => `<span class="w-7 text-right ${n ? cls : 'text-muted/40'}">${n}</span>`;
+            return `
+            <button onclick="navigate('#/decks/${d.id}')" class="w-full flex items-center pl-4 text-left active:bg-base transition-colors">
+              <span class="flex-1 min-w-0 flex items-center min-h-[60px] pr-3 ${i < decks.length - 1 ? 'border-b border-line' : ''}">
+                <span class="flex-1 min-w-0">
+                  <span class="block text-[17px] leading-[22px] text-ink truncate">${escHtml(d.name)}</span>
+                  <span class="block text-[13px] leading-[18px] text-muted">${lastStudied(d.last_reviewed, d.total_count)}</span>
+                </span>
+                <span class="flex gap-2 text-[15px] font-semibold">${count(newDue, 'text-rate-good')}${count(relearn, 'text-rate-hard')}${count(review, 'text-rate-easy')}</span>
+                <svg class="w-5 h-5 ml-1.5 text-muted/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+              </span>
+            </button>`;
+          }).join('')}
+        </section>`}
 
-    <!-- FAB: clears the bottom nav (~64px + home-indicator inset) by 24px so it isn't hit instead of Stats -->
-    <button onclick="showNewDeckModal()" aria-label="New deck"
-      style="bottom: calc(88px + env(safe-area-inset-bottom))"
-      class="fixed right-5 w-14 h-14 bg-accent hover:bg-accent-dark active:bg-accent-dark rounded-full shadow-lg shadow-ink/20 flex items-center justify-center text-on-accent text-3xl font-light transition-colors z-30">
-      +
-    </button>
+      <button onclick="showNewDeckModal()" class="mt-3 h-11 px-1 flex items-center gap-2 text-[17px] text-accent active:opacity-60">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        New deck
+      </button>
+    </div>
 
     <!-- New Deck Modal -->
     <div id="new-deck-modal" class="hidden fixed inset-0 bg-black/70 flex items-end justify-center z-50 p-4" onclick="hideNewDeckModal(event)">
@@ -577,9 +588,9 @@ async function renderDeckDetail(app, deckId) {
         </div>`}
     </div>
 
-    <!-- Thumb bar: sits just above #bottom-nav (~64px + safe area) -->
+    <!-- Thumb bar: sits just above #bottom-nav (49px + 1px border + safe area) -->
     <div class="fixed left-0 right-0 z-30 px-4 pb-4 pt-2 bg-paper/95 backdrop-blur border-t border-line/60 flex gap-2"
-      style="bottom: calc(64px + env(safe-area-inset-bottom))">
+      style="bottom: calc(50px + env(safe-area-inset-bottom))">
       <button onclick="${dueCount > 0 ? `navigate('#/study/${deckId}')` : 'void(0)'}"
         class="flex-1 h-14 ${dueCount > 0 ? 'bg-accent hover:bg-accent-dark text-on-accent' : 'bg-surface text-muted cursor-not-allowed'} rounded-2xl font-semibold text-base transition-colors">
         ${dueCount > 0 ? `Study (${dueCount})` : 'No cards due'}
@@ -1049,7 +1060,7 @@ async function renderStudy(app, deckId, favoritesOnly = false, startId = null) {
     return;
   }
 
-  study = { cards, index: 0, flipped: false, ratings: { 1: 0, 2: 0, 3: 0, 4: 0 }, deckId, favoritesOnly, pendingRate: null };
+  study = { cards, index: 0, flipped: false, ratings: { 1: 0, 2: 0, 3: 0, 4: 0 }, deckId, favoritesOnly, pendingRate: null, startedAt: Date.now() };
   drawStudyCard();
 }
 
@@ -1068,15 +1079,9 @@ function popFavorite(btn) {
 async function toggleFavoriteInStudy() {
   const card = study.cards[study.index];
   card.is_favorite = card.is_favorite ? 0 : 1;
-  ['fav-btn-front', 'fav-btn-back'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (!btn) return;
-    btn.classList.toggle('text-rate-hard', !!card.is_favorite);
-    btn.classList.toggle('text-muted', !card.is_favorite);
-    btn.innerHTML = starSVG(card.is_favorite);
-    btn.title = card.is_favorite ? 'Remove from favorites' : 'Add to favorites';
-    if (card.is_favorite) popFavorite(btn);
-  });
+  document.getElementById('study-star')?.classList.toggle('hidden', !card.is_favorite);
+  const label = document.getElementById('menu-fav');
+  if (label) label.textContent = card.is_favorite ? 'Remove from favorites' : 'Add to favorites';
   trackWrite(api(`/api/cards/${card.id}/favorite`, { method: 'POST', body: JSON.stringify({ favorite: !!card.is_favorite }) }).catch(() => {}));
 }
 
@@ -1100,39 +1105,39 @@ function toggleFavoriteInList(cardId, btnId) {
   }
 }
 
+const studyIcon = {
+  close: '<svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  more: '<svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>',
+  star: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>',
+};
+
 function drawStudyCard() {
   const app = document.getElementById('app');
   const { cards, index, flipped, ratings, deckId } = study;
+  const backHash = deckId === 'all' ? '#/' : `#/decks/${deckId}`;
 
   if (index >= cards.length) {
     const total = cards.filter(c => !c.practice).length;
+    const minutes = Math.max(1, Math.round((Date.now() - study.startedAt) / 60000));
+    const remembered = ratings[2] + ratings[3] + ratings[4];
+    const row = (label, value, cls, last) => `
+      <div class="pl-4"><div class="flex items-center justify-between min-h-12 pr-4 ${last ? '' : 'border-b border-line'}">
+        <span class="text-[17px] text-ink">${label}</span><span class="text-[17px] font-medium ${cls}">${value}</span>
+      </div></div>`;
     app.innerHTML = `
-      <div class="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center">
-        <svg class="w-14 h-14 mb-4 text-rate-easy" viewBox="0 0 56 56" fill="none" aria-hidden="true"><circle cx="28" cy="28" r="27" stroke="currentColor" stroke-width="2"/><path d="M17 29l7.5 7.5L40 21" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <h2 class="text-[28px] leading-[34px] font-bold text-ink mb-1 font-heading">Done for now</h2>
-        <p class="text-muted mb-8">Reviewed ${total} card${total !== 1 ? 's' : ''}</p>
-        <div class="grid grid-cols-2 gap-3 w-full max-w-xs mb-8">
-          <div class="bg-rate-again/10 border border-rate-again/30 rounded-xl p-3">
-            <div class="text-2xl font-bold text-rate-again">${ratings[1]}</div>
-            <div class="text-sm text-rate-again/70">Again</div>
-          </div>
-          <div class="bg-rate-hard/10 border border-rate-hard/30 rounded-xl p-3">
-            <div class="text-2xl font-bold text-rate-hard">${ratings[2]}</div>
-            <div class="text-sm text-rate-hard/70">Hard</div>
-          </div>
-          <div class="bg-rate-good/10 border border-rate-good/30 rounded-xl p-3">
-            <div class="text-2xl font-bold text-rate-good">${ratings[3]}</div>
-            <div class="text-sm text-rate-good/70">Good</div>
-          </div>
-          <div class="bg-rate-easy/10 border border-rate-easy/30 rounded-xl p-3">
-            <div class="text-2xl font-bold text-rate-easy">${ratings[4]}</div>
-            <div class="text-sm text-rate-easy/70">Easy</div>
-          </div>
+      <div class="min-h-screen flex flex-col px-4 pt-24 pb-44">
+        <div class="px-2">
+          <svg class="w-14 h-14 text-rate-easy" viewBox="0 0 56 56" fill="none" aria-hidden="true"><circle cx="28" cy="28" r="27" stroke="currentColor" stroke-width="2"/><path d="M17 29l7.5 7.5L40 21" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <h2 class="mt-5 text-[28px] leading-[34px] font-bold text-ink font-heading">Done for now</h2>
+          <p class="mt-2 text-[17px] leading-6 text-ink/80">${total} card${total !== 1 ? 's' : ''} in ${minutes} min.</p>
         </div>
-        <button onclick="leaveStudy('#/')"
-          class="h-12 px-8 bg-accent hover:bg-accent-dark rounded-xl text-on-accent font-semibold transition-colors">
-          Back to Decks
-        </button>
+        <section class="mt-8 bg-surface rounded-[14px] overflow-hidden">
+          ${row('Remembered', remembered, 'text-rate-easy')}
+          ${row('Forgot', ratings[1], ratings[1] ? 'text-rate-again' : 'text-muted', true)}
+        </section>
+      </div>
+      <div class="fixed left-0 right-0 bottom-0 px-4 pt-3 bg-paper" style="padding-bottom: calc(env(safe-area-inset-bottom) + 16px)">
+        <button onclick="leaveStudy('${backHash}')" class="w-full h-14 rounded-[14px] bg-ink text-paper text-[17px] font-semibold active:opacity-80">${deckId === 'all' ? 'Back to Today' : 'Back to deck'}</button>
       </div>
       ${undoToastHTML()}`;
     return;
@@ -1141,103 +1146,72 @@ function drawStudyCard() {
   const card = cards[index];
   const total = cards.length;
   const progress = Math.round((index / total) * 100);
-  const backHash = deckId === 'all' ? '#/' : `#/decks/${deckId}`;
-  const badge = typeBadge(card.type);
-  const backSpeak = card.example ? `${card.back}. ${card.example}` : card.back;
   const info = deckInfo(card.deck_id);
   const lang = info.tts_lang;
-  const noSpeech = lang === 'off' ? ' hidden' : '';
+  const speech = lang !== 'off';
+  const backSpeak = card.example ? `${card.back}. ${card.example}` : card.back;
+  const label = card.type && card.type !== 'vocab' ? ({ phrasal: 'Phrasal verb' }[card.type] || card.type) : '';
+  const speakBtn = (text, extra = '') => speech ? `
+    <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(text))}, '${lang}')" aria-label="Play audio"
+      class="w-11 h-11 -mr-2.5 flex-shrink-0 flex items-center justify-center text-muted active:opacity-50 ${extra}">${speakerOnSVG}</button>` : '';
 
   app.innerHTML = `
-    <div class="flex flex-col min-h-screen p-4 pt-5 pb-32">
-      <!-- Progress bar -->
-      <div class="flex items-center gap-3 mb-5">
-        <button onclick="leaveStudy('${backHash}')"
-          class="w-10 h-10 flex items-center justify-center text-muted hover:text-ink transition-colors -ml-2 flex-shrink-0">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-        </button>
-        <div class="flex-1 bg-line rounded-full h-1.5">
-          <div class="bg-accent h-1.5 rounded-full transition-all duration-300" style="width:${progress}%"></div>
-        </div>
-        <span class="text-muted text-sm flex-shrink-0">${index + 1} / ${total}</span>
-        <button onclick="editCurrentCard()" aria-label="Edit card"
-          class="w-9 h-9 flex items-center justify-center text-muted hover:text-ink transition-colors flex-shrink-0">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-          </svg>
-        </button>
-        <button id="tts-btn" onclick="toggleTTS()"
-          class="w-9 h-9 flex items-center justify-center ${ttsEnabled ? 'text-accent' : 'text-muted'} hover:text-ink transition-colors flex-shrink-0"
-          title="${ttsEnabled ? 'Mute TTS' : 'Unmute TTS'}">
-          ${ttsEnabled ? speakerOnSVG : speakerOffSVG}
-        </button>
+    <div class="min-h-screen flex flex-col">
+      <div class="flex items-center gap-1 px-2 pt-2">
+        <button onclick="leaveStudy('${backHash}')" aria-label="End session" class="w-11 h-11 flex items-center justify-center text-ink/70 active:opacity-50">${studyIcon.close}</button>
+        <div class="flex-1 h-1 rounded-full bg-line overflow-hidden"><div class="h-1 bg-accent transition-all duration-300" style="width:${progress}%"></div></div>
+        <span class="w-14 text-center text-[13px] text-muted">${index + 1} / ${total}</span>
+        <button onclick="showStudyMenu()" aria-label="More" class="w-11 h-11 flex items-center justify-center text-ink/70 active:opacity-50">${studyIcon.more}</button>
       </div>
 
-      ${ttsEnabled ? `
-        <div class="flex justify-end -mt-3 mb-3">
-          <button id="tts-mode-btn" onclick="cycleTTSMode()"
-            class="text-xs text-accent/80 hover:text-accent bg-accent/10 px-3 py-1 rounded-full transition-colors"
-            title="Tap to change what gets spoken">
-            ${{ both: 'Front + Back', front: 'Front only', back: 'Back only' }[ttsMode]}
-          </button>
-        </div>` : ''}
+      <div id="study-body" onclick="flipCard()" class="flex-1 px-6 pb-44 cursor-pointer select-none animate-card-in">
+        <div class="mt-5 flex items-center justify-between gap-3">
+          <span class="min-w-0 truncate text-[13px] text-muted flex items-center gap-1.5">
+            ${escHtml(deckById[card.deck_id]?.name || '')}${label ? ` · ${escHtml(label)}` : ''}
+            <span id="study-star" class="text-rate-hard ${card.is_favorite ? '' : 'hidden'}">${studyIcon.star}</span>
+          </span>
+          ${speakBtn(card.front)}
+        </div>
+        ${card.practice ? `<p class="mt-3 inline-block text-[13px] font-medium text-rate-again bg-accent-tint px-2.5 py-1 rounded-full">Practice round · won’t change its schedule</p>` : ''}
+        <div class="mt-8 prose-content text-[28px] leading-[1.45] font-medium text-ink">${md(card.front)}</div>
 
-      <!-- Card -->
-      <div class="flex-1 flex items-center justify-center">
-        <div class="card-scene w-full animate-card-in" id="card-scene" onclick="flipCard()">
-          <div class="card-inner w-full${flipped ? ' flipped' : ''}" id="card-inner">
-            <div class="card-front bg-surface rounded-2xl p-6 pb-12 flex flex-col items-center justify-center cursor-pointer shadow-lg shadow-ink/10 select-none">
-              ${card.practice ? `<p class="mb-3 text-xs font-semibold text-rate-again bg-rate-again/10 px-2.5 py-1 rounded-full">Practice round · won't change its schedule</p>` : ''}
-              ${fieldLabel(info.front_label, 'Front')}<div class="prose-content text-ink text-xl text-center leading-relaxed">${md(card.front)}</div>
-              <p class="text-muted text-xs mt-4">tap to reveal</p>
-              <button id="fav-btn-front" onclick="event.stopPropagation(); toggleFavoriteInStudy()"
-                class="absolute bottom-3 left-3 w-8 h-8 flex items-center justify-center ${card.is_favorite ? 'text-rate-hard' : 'text-muted'} hover:text-rate-hard transition-colors"
-                title="${card.is_favorite ? 'Remove from favorites' : 'Add to favorites'}">
-                ${starSVG(card.is_favorite)}
-              </button>
-              <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(card.front))}, '${lang}')"
-                class="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center text-muted hover:text-ink transition-colors${noSpeech}"
-                title="Replay">
-                ${speakerOnSVG}
-              </button>
-            </div>
-            <div class="card-back bg-accent/5 border border-accent/20 rounded-2xl p-5 pb-12 flex flex-col items-center justify-center cursor-pointer shadow-lg shadow-ink/10 select-none">
-              <div class="front-echo prose-content text-muted text-sm text-center w-full mb-3 pb-3 border-b border-accent/20">${md(card.front)}</div>
-              ${badge ? `<div class="mb-2">${badge}</div>` : ''}
-              ${fieldLabel(info.back_label, 'Back')}<div class="prose-content text-ink text-lg text-center leading-relaxed">${md(card.back)}</div>
-              ${card.example ? `
-                <div class="mt-3 pt-3 border-t border-accent/20 w-full">
-                  ${fieldLabel(info.example_label, 'Example')}<div class="prose-content text-muted text-sm text-center italic leading-relaxed">${md(card.example)}</div>
-                </div>` : ''}
-              <button id="fav-btn-back" onclick="event.stopPropagation(); toggleFavoriteInStudy()"
-                class="absolute bottom-3 left-3 w-8 h-8 flex items-center justify-center ${card.is_favorite ? 'text-rate-hard' : 'text-muted'} hover:text-rate-hard transition-colors"
-                title="${card.is_favorite ? 'Remove from favorites' : 'Add to favorites'}">
-                ${starSVG(card.is_favorite)}
-              </button>
-              <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(backSpeak))}, '${lang}')"
-                class="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center text-accent/50 hover:text-accent transition-colors${noSpeech}"
-                title="Replay">
-                ${speakerOnSVG}
-              </button>
-            </div>
+        <div id="answer" class="${flipped ? '' : 'hidden'} mt-6 pt-5 border-t border-line">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 prose-content text-[20px] leading-7 font-semibold text-ink">${md(card.back)}</div>
+            ${speakBtn(backSpeak, '-mt-2')}
           </div>
+          ${card.example ? `<div class="mt-3 prose-content text-[15px] leading-[22px] text-ink/75">${md(card.example)}</div>` : ''}
         </div>
       </div>
-
-      <p id="swipe-hint" class="${flipped ? '' : 'invisible'} text-center text-muted text-xs mt-4">swipe left = Again &nbsp;·&nbsp; swipe right = Good</p>
     </div>
 
-    <!-- Rating buttons: pinned to the bottom of the viewport so they're always
-         reachable without scrolling, no matter how long the card content is. -->
-    <div id="rating-btns" class="${flipped ? '' : 'invisible'} fixed bottom-0 left-0 right-0 z-30 bg-paper/95 backdrop-blur border-t border-line/60 px-4 pt-3 safe-bottom grid grid-cols-2 gap-2">
-      ${[[1, 'Again', 'again'], [2, 'Hard', 'hard'], [3, 'Good', 'good'], [4, 'Easy', 'easy']].map(([r, label, tone]) => `
-      <button onclick="rate(${r})"
-        class="h-14 bg-rate-${tone}/10 border border-rate-${tone}/40 rounded-xl text-rate-${tone} font-semibold hover:bg-rate-${tone}/20 active:scale-95 transition-all text-sm flex flex-col items-center justify-center leading-tight">
-        ${label}${!card.practice && card.preview ? `<span class="text-xs font-normal opacity-80 mt-0.5">${fmtInterval(card.preview[r - 1])}</span>` : ''}
+    <div id="reveal-bar" class="${flipped ? 'hidden' : ''} fixed left-0 right-0 bottom-0 z-30 px-4 pt-3 bg-paper" style="padding-bottom: calc(env(safe-area-inset-bottom) + 12px)">
+      <button onclick="flipCard()" class="w-full h-14 rounded-[14px] bg-ink text-paper text-[17px] font-semibold active:opacity-80">Show answer</button>
+      <p class="mt-2 text-center text-[13px] text-muted">or tap anywhere</p>
+    </div>
+
+    <div id="rating-btns" class="${flipped ? '' : 'hidden'} fixed left-0 right-0 bottom-0 z-30 px-3 pt-2.5 bg-paper/95 backdrop-blur border-t border-line grid grid-cols-4 gap-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 12px)">
+      ${[[1, 'Again', 'bg-accent-tint text-rate-again'], [2, 'Hard', 'bg-base text-ink'], [3, 'Good', 'bg-ink text-paper'], [4, 'Easy', 'bg-base text-ink']].map(([r, name, cls]) => `
+      <button onclick="rate(${r})" class="h-[62px] rounded-xl ${cls} flex flex-col items-center justify-center gap-0.5 active:opacity-75 transition-opacity">
+        <span class="text-[16px] font-semibold">${name}</span>
+        ${!card.practice && card.preview ? `<span class="text-[12px] opacity-75">${fmtInterval(card.preview[r - 1])}</span>` : ''}
       </button>`).join('')}
-      <div class="col-span-2 h-3"></div>
+    </div>
+
+    <div id="study-menu" class="hidden fixed inset-0 z-50 bg-black/40 flex items-end" onclick="hideStudyMenu(event)">
+      <div class="w-full bg-surface rounded-t-[14px]" style="padding-bottom: calc(env(safe-area-inset-bottom) + 8px)" onclick="event.stopPropagation()">
+        <div class="mx-auto mt-2 mb-1 w-9 h-[5px] rounded-full bg-line"></div>
+        ${[
+          ['editCurrentCard()', 'Edit card', ''],
+          ['toggleFavoriteInStudy()', `<span id="menu-fav">${card.is_favorite ? 'Remove from favorites' : 'Add to favorites'}</span>`, ''],
+          ...(speech ? [
+            ['toggleTTS()', 'Read aloud', `<span id="menu-tts" class="text-muted">${ttsEnabled ? 'On' : 'Off'}</span>`],
+            ['cycleTTSMode()', 'Read', `<span id="menu-tts-mode" class="text-muted">${TTS_MODE_LABELS[ttsMode]}</span>`],
+          ] : []),
+        ].map(([fn, text, value]) => `
+        <div class="pl-4"><button onclick="${fn}" class="w-full flex items-center justify-between min-h-[52px] pr-4 border-b border-line text-[17px] text-ink text-left active:opacity-60">${text}${value}</button></div>`).join('')}
+        <div class="px-4 pt-2"><button onclick="hideStudyMenu()" class="w-full h-[52px] text-[17px] font-semibold text-accent active:opacity-60">Done</button></div>
+      </div>
     </div>
     ${undoToastHTML()}
   `;
@@ -1246,19 +1220,21 @@ function drawStudyCard() {
   if (ttsMode === 'both' || ttsMode === 'front') speak(card.front, lang);
 }
 
-function flipCard() {
-  if (!study) return;
-  study.flipped = !study.flipped;
-  document.getElementById('card-inner')?.classList.toggle('flipped', study.flipped);
-  document.getElementById('rating-btns')?.classList.toggle('invisible', !study.flipped);
-  document.getElementById('swipe-hint')?.classList.toggle('invisible', !study.flipped);
+function showStudyMenu() { showModal('study-menu'); }
+function hideStudyMenu(e) {
+  if (!e || e.target === document.getElementById('study-menu')) hideModalEl('study-menu');
+}
 
+// Reveals the answer under the question (tapping again does nothing — the
+// rating bar is the way forward).
+function flipCard() {
+  if (!study || study.flipped || study.index >= study.cards.length) return;
+  study.flipped = true;
+  document.getElementById('answer')?.classList.remove('hidden');
+  document.getElementById('reveal-bar')?.classList.add('hidden');
+  document.getElementById('rating-btns')?.classList.remove('hidden');
   const c = study.cards[study.index];
-  if (study.flipped) {
-    if (ttsMode === 'both' || ttsMode === 'back') speak(c.example ? `${c.back}. ${c.example}` : c.back, deckInfo(c.deck_id).tts_lang);
-  } else {
-    if (ttsMode === 'both' || ttsMode === 'front') speak(c.front, deckInfo(c.deck_id).tts_lang);
-  }
+  if (ttsMode === 'both' || ttsMode === 'back') speak(c.example ? `${c.back}. ${c.example}` : c.back, deckInfo(c.deck_id).tts_lang);
 }
 
 /* Small pill showing the card's free-text label (hidden when empty / legacy 'vocab') */
@@ -1363,48 +1339,47 @@ async function leaveStudy(hash) {
   navigate(hash);
 }
 
+// Swipes rate, so they only work once the answer is showing:
+// left = Again, right = Good.
 function setupSwipe() {
-  const scene = document.getElementById('card-scene');
-  if (!scene) return;
+  const body = document.getElementById('study-body');
+  if (!body) return;
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let startX = 0, startY = 0, dragging = false;
 
-  // Swipes rate, so they only work once the answer is showing.
-  scene.addEventListener('touchstart', e => {
+  body.addEventListener('touchstart', e => {
     if (!study.flipped) return;
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     dragging = true;
-    scene.style.transition = 'none';
+    body.style.transition = 'none';
   }, { passive: true });
 
-  scene.addEventListener('touchmove', e => {
-    if (!dragging || !study.flipped || reduceMotion) return;
+  body.addEventListener('touchmove', e => {
+    if (!dragging || reduceMotion) return;
     const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
-    if (Math.abs(dy) > Math.abs(dx) || Math.abs(dx) < 10) return; // vertical scroll or jitter — leave taps crisp
-    scene.style.transform = `translateX(${dx}px) rotate(${dx / 20}deg)`;
-    scene.style.opacity = Math.max(1 - Math.abs(dx) / 400, 0.4);
+    if (Math.abs(dy) > Math.abs(dx) || Math.abs(dx) < 10) return; // vertical scroll or jitter
+    body.style.transform = `translateX(${dx}px)`;
+    body.style.opacity = Math.max(1 - Math.abs(dx) / 400, 0.4);
   }, { passive: true });
 
-  scene.addEventListener('touchend', e => {
+  body.addEventListener('touchend', e => {
     if (!dragging) return;
     dragging = false;
     const dx = e.changedTouches[0].clientX - startX;
     const dy = e.changedTouches[0].clientY - startY;
-    scene.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s';
-
-    if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) || !study.flipped) {
-      scene.style.transform = '';
-      scene.style.opacity = '';
+    body.style.transition = 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s';
+    if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx)) {
+      body.style.transform = '';
+      body.style.opacity = '';
       return;
     }
-    const dir = dx < 0 ? -1 : 1;
     if (!reduceMotion) {
-      scene.style.transform = `translateX(${dir * 500}px) rotate(${dir * 20}deg)`;
-      scene.style.opacity = '0';
+      body.style.transform = `translateX(${dx < 0 ? -420 : 420}px)`;
+      body.style.opacity = '0';
     }
-    setTimeout(() => rate(dx < 0 ? 1 : 3), reduceMotion ? 0 : 300);
+    setTimeout(() => rate(dx < 0 ? 1 : 3), reduceMotion ? 0 : 220);
   }, { passive: true });
 }
 

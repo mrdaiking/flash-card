@@ -10,12 +10,19 @@ router.get('/decks', (req, res) => {
       COALESCE(d.front_label, 'Front') AS front_label, COALESCE(d.back_label, 'Back') AS back_label,
       COALESCE(d.example_label, 'Example') AS example_label, COALESCE(d.tts_lang, 'en-US') AS tts_lang,
       COUNT(c.id) as total_count,
-      SUM(CASE WHEN c.next_review <= ? THEN 1 ELSE 0 END) as due_count
+      SUM(CASE WHEN c.next_review <= ? THEN 1 ELSE 0 END) as due_count,
+      -- due_count split for the Today screen: never-seen cards, cards whose
+      -- last rating was Again (relearning), and ordinary reviews.
+      SUM(CASE WHEN c.next_review <= ? AND c.state = 0 THEN 1 ELSE 0 END) as new_due,
+      SUM(CASE WHEN c.next_review <= ? AND c.state != 0 AND (
+        SELECT r.rating FROM reviews r WHERE r.card_id = c.id ORDER BY r.reviewed_at DESC, r.id DESC LIMIT 1
+      ) = 1 THEN 1 ELSE 0 END) as relearn_due,
+      (SELECT MAX(r.reviewed_at) FROM reviews r JOIN cards c2 ON c2.id = r.card_id WHERE c2.deck_id = d.id) as last_reviewed
     FROM decks d
     LEFT JOIN cards c ON c.deck_id = d.id
     GROUP BY d.id
     ORDER BY due_count DESC, total_count DESC, d.created_at DESC
-  `).all(now);
+  `).all(now, now, now);
   res.json(decks);
 });
 

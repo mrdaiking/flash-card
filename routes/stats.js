@@ -22,15 +22,24 @@ router.get('/stats', (req, res) => {
     FROM reviews ORDER BY day DESC LIMIT 365
   `).all();
 
+  // A streak still counts until today is over: if nothing is reviewed yet
+  // today, count back from yesterday.
   let streak_days = 0;
+  const offset = days[0]?.day === new Date().toLocaleDateString('en-CA') ? 0 : 1;
   for (let i = 0; i < days.length; i++) {
     const expected = new Date();
-    expected.setDate(expected.getDate() - i);
+    expected.setDate(expected.getDate() - i - offset);
     if (days[i].day === expected.toLocaleDateString('en-CA')) streak_days++;
     else break;
   }
 
-  res.json({ total_cards, due_today, streak_days, reviewed_today, mature_cards, words_this_week });
+  // Seconds per card, for "about N min": median gap between consecutive
+  // reviews in the last 500, ignoring gaps over 2 min (breaks, new sessions).
+  const times = db.prepare('SELECT reviewed_at FROM reviews ORDER BY reviewed_at DESC LIMIT 500').all().map(r => r.reviewed_at);
+  const gaps = times.slice(1).map((t, i) => times[i] - t).filter(g => g > 0 && g <= 120).sort((a, b) => a - b);
+  const sec_per_card = gaps.length >= 20 ? gaps[Math.floor(gaps.length / 2)] : 10;
+
+  res.json({ total_cards, due_today, streak_days, reviewed_today, mature_cards, words_this_week, sec_per_card });
 });
 
 // Last-7-day recap: new words and reviews.

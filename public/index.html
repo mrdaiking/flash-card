@@ -96,24 +96,6 @@
       font-size: 17px; /* iOS body size */
     }
     h1, h2, h3 { letter-spacing: -0.01em; }
-    .card-scene { perspective: 1000px; }
-    .card-inner {
-      transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
-      transform-style: preserve-3d;
-      position: relative;
-      /* Both faces share one grid cell, so the taller face sets the height (no clipped text). */
-      display: grid;
-      min-height: 260px;
-    }
-    .card-inner.flipped { transform: rotateY(180deg); }
-    .card-front, .card-back {
-      grid-area: 1 / 1;
-      position: relative; /* anchors the star / speaker buttons */
-      min-width: 0;
-      backface-visibility: hidden;
-      -webkit-backface-visibility: hidden;
-    }
-    .card-back { transform: rotateY(180deg); }
     .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
     .safe-top { padding-top: max(env(safe-area-inset-top), 0px); }
     .prose-content { max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
@@ -124,8 +106,6 @@
     .prose-content code { font-size: 0.85em; background: rgb(var(--color-base)); padding: 0.1em 0.3em; border-radius: 0.25rem; }
     .prose-content pre code { background: transparent; padding: 0; }
     .prose-content p { margin: 0.25rem 0; }
-    /* Question repeated small on the answer face: keep its images to a thumbnail. */
-    .front-echo img { max-height: 5rem; }
 
     /* Motion — all gated behind prefers-reduced-motion so it's opt-out, not forced. */
     @media (prefers-reduced-motion: no-preference) {
@@ -142,13 +122,13 @@
       }
       .animate-star-pop { animation: starPop 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
 
-      #new-deck-modal > div, #deck-menu > div, #rename-modal > div {
+      #new-deck-modal > div, #deck-menu > div, #rename-modal > div, #study-menu > div {
         transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s;
         transform: translateY(16px);
         opacity: 0;
       }
       #new-deck-modal.modal-open > div, #deck-menu.modal-open > div,
-      #rename-modal.modal-open > div {
+      #rename-modal.modal-open > div, #study-menu.modal-open > div {
         transform: translateY(0);
         opacity: 1;
       }
@@ -194,25 +174,15 @@
   <div id="app" class="pb-20 min-h-screen safe-top"></div>
 
   <!-- Bottom Nav -->
-  <nav id="bottom-nav" class="hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-line/60 safe-bottom z-40">
-    <div class="flex">
-      <button onclick="navigate('#/')" class="flex-1 flex flex-col items-center py-2.5 gap-1 text-muted hover:text-ink transition-colors nav-item" data-route="">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
-        </svg>
-        <span class="text-xs">Home</span>
+  <nav id="bottom-nav" class="hidden fixed bottom-0 left-0 right-0 bg-paper/95 backdrop-blur border-t border-line safe-bottom z-40">
+    <div class="grid grid-cols-2">
+      <button onclick="navigate('#/')" class="flex flex-col items-center justify-center h-[49px] gap-0.5 text-muted nav-item" data-route="">
+        <svg class="w-[26px] h-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="13" height="15" rx="2.5"/><path d="M8 3h9.5A2.5 2.5 0 0 1 20 5.5V17"/></svg>
+        <span class="text-[11px] font-medium">Today</span>
       </button>
-      <button onclick="navigate('#/study/all')" class="flex-1 flex flex-col items-center py-2.5 gap-1 text-muted hover:text-ink transition-colors nav-item" data-route="study">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
-        </svg>
-        <span class="text-xs">Study</span>
-      </button>
-      <button onclick="navigate('#/stats')" class="flex-1 flex flex-col items-center py-2.5 gap-1 text-muted hover:text-ink transition-colors nav-item" data-route="stats">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-        </svg>
-        <span class="text-xs">Stats</span>
+      <button onclick="navigate('#/stats')" class="flex flex-col items-center justify-center h-[49px] gap-0.5 text-muted nav-item" data-route="stats">
+        <svg class="w-[26px] h-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        <span class="text-[11px] font-medium">Progress</span>
       </button>
     </div>
   </nav>
