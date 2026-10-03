@@ -503,7 +503,11 @@ async function renderHome(app) {
 
   app.innerHTML = `
     <div class="px-4 pt-6 pb-8">
-      <p class="px-1 text-[15px] text-muted">${dateLine}</p>
+      <div class="flex items-center justify-between">
+        <p class="px-1 text-[15px] text-muted">${dateLine}</p>
+        <!-- New deck lives at the top (iOS nav-bar spot), not under the deck list -->
+        <button onclick="showNewDeckModal()" aria-label="New deck" class="w-11 h-11 -mr-2 flex items-center justify-center text-accent active:opacity-60">${ICON.plus}</button>
+      </div>
       <h1 class="px-1 text-[34px] leading-[41px] font-bold text-ink font-heading">Today</h1>
 
       <section class="mt-4 bg-surface rounded-[14px] p-[18px] flex flex-col gap-3.5">
@@ -530,7 +534,7 @@ async function renderHome(app) {
       ${decks.length === 0 ? `
         <section class="mt-8 px-1">
           <p class="text-[17px] text-ink font-semibold">No decks yet</p>
-          <p class="mt-1 text-[15px] text-muted">Make a deck, add a few cards, and they’ll show up here when it’s time to review.</p>
+          <p class="mt-1 text-[15px] text-muted">Tap + at the top to make a deck. Add a few cards and they’ll show up here when it’s time to review.</p>
         </section>` : `
         <div class="mt-8 mb-2 px-4 flex items-baseline justify-between text-[13px]">
           <span class="text-muted uppercase">Decks</span>
@@ -555,10 +559,6 @@ async function renderHome(app) {
           }).join('')}
         </section>`}
 
-      <button onclick="showNewDeckModal()" class="mt-3 h-11 px-1 flex items-center gap-2 text-[17px] text-accent active:opacity-60">
-        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        New deck
-      </button>
     </div>
 
     ${sheetHTML('new-deck-modal', 'New Deck', `
