@@ -42,19 +42,26 @@ router.get('/stats', (req, res) => {
   res.json({ total_cards, due_today, streak_days, reviewed_today, mature_cards, words_this_week, sec_per_card });
 });
 
-// Last-7-day recap: new words and reviews.
+// Last-7-day recap: new cards (with their deck, for the language tag and a
+// tap-to-edit link) and how the week's reviews went.
 router.get('/recap', (req, res) => {
   const cutoff = "unixepoch('now', '-6 days', 'start of day')";
   const new_words = db.prepare(
-    `SELECT id, front, type, created_at FROM cards WHERE created_at >= ${cutoff} ORDER BY created_at DESC`
+    `SELECT c.id, c.front, c.back, c.type, c.created_at, c.deck_id, d.name AS deck_name
+     FROM cards c JOIN decks d ON d.id = c.deck_id
+     WHERE c.created_at >= ${cutoff} ORDER BY c.created_at DESC`
   ).all();
-  const reviews_done = db.prepare(
-    `SELECT COUNT(*) as c FROM reviews WHERE reviewed_at >= ${cutoff}`
-  ).get().c;
+  const r = db.prepare(`
+    SELECT COUNT(*) AS reviews, COALESCE(SUM(rating = 1), 0) AS forgot,
+      COUNT(DISTINCT date(reviewed_at, 'unixepoch', 'localtime')) AS days
+    FROM reviews WHERE reviewed_at >= ${cutoff}
+  `).get();
   res.json({
     new_words,
     new_word_count: new_words.length,
-    reviews_done,
+    reviews_done: r.reviews,
+    forgot: r.forgot,
+    days_studied: r.days,
   });
 });
 

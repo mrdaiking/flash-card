@@ -1240,13 +1240,6 @@ function flipCard() {
   if (ttsMode === 'both' || ttsMode === 'back') speak(c.example ? `${c.back}. ${c.example}` : c.back, speechLang(deckInfo(c.deck_id)));
 }
 
-/* Small pill showing the card's free-text label (hidden when empty / legacy 'vocab') */
-function typeBadge(type) {
-  if (!type || type === 'vocab') return '';
-  const text = { phrasal: 'Phrasal verb' }[type] || type; // legacy keys
-  return `<span class="inline-block bg-accent/15 text-accent-dark text-[11px] font-semibold uppercase px-2 py-0.5 rounded-full">${escHtml(text)}</span>`;
-}
-
 // Fire a study-screen write (review or favorite) without blocking the UI,
 // but track it so leaveStudy() can wait for it — otherwise whatever screen
 // you land on can still reflect the pre-write state if it hasn't landed yet.
@@ -1422,7 +1415,7 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
     example: card?.example || draft?.example || '',
   };
   const cardType = card?.type || draft?.type || 'vocab';
-  const backHash = ret?.startsWith('#/study/') ? ret : deckId ? `#/decks/${deckId}` : '#/';
+  const backHash = ret?.startsWith('#/study/') || ret === '#/recap' ? ret : deckId ? `#/decks/${deckId}` : '#/';
 
   const ct = cardText(info);
   const field = (key, label, rows, optional) => `
@@ -1887,43 +1880,61 @@ function fmtDate(sec) {
 ════════════════════════════════════════ */
 async function renderRecap(app) {
   loading(app);
-  const recap = await api('/api/recap');
+  const [recap] = await Promise.all([api('/api/recap'), api('/api/decks')]); // decks: language tag per card
   if (!recap) return;
+
+  const start = new Date(); start.setDate(start.getDate() - 6);
+  const fmt = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const remembered = recap.reviews_done ? Math.round(((recap.reviews_done - recap.forgot) / recap.reviews_done) * 100) : null;
+  const rows = [
+    ['New cards', recap.new_word_count],
+    ['Reviews', recap.reviews_done],
+    ['Days studied', `${recap.days_studied} <span class="text-muted">of 7</span>`],
+    ['Remembered', remembered === null ? '<span class="text-muted">–</span>' : `${remembered}%`],
+    ['Forgot', recap.forgot ? `<span class="text-rate-again">${recap.forgot}</span>` : '0'],
+  ];
+
+  // New cards grouped by the day they were added (Today, Yesterday, Thu, Oct 1…).
+  const byDay = new Map();
+  for (const w of recap.new_words) {
+    const day = fmtDate(w.created_at);
+    (byDay.get(day) || byDay.set(day, []).get(day)).push(w);
+  }
 
   app.innerHTML = `
     <div class="px-4 pt-1 pb-10">
       <button onclick="navigate('#/stats')" class="h-11 -ml-2 pr-2 flex items-center text-[17px] text-accent active:opacity-60">${ICON.chevronLeft}Progress</button>
-      <h1 class="px-1 mb-6 text-[34px] leading-[41px] font-bold text-ink font-heading">This Week</h1>
+      <h1 class="px-1 text-[34px] leading-[41px] font-bold text-ink font-heading">This Week</h1>
+      <p class="px-1 mt-1 text-[15px] text-muted">${fmt(start)} – ${fmt(new Date())}</p>
 
-      <div class="grid grid-cols-2 gap-3 mb-6">
-        <div class="bg-surface rounded-2xl p-4 text-center">
-          <div class="text-2xl font-bold text-accent">${recap.new_word_count}</div>
-          <div class="text-xs text-muted mt-1">New words</div>
-        </div>
-        <div class="bg-surface rounded-2xl p-4 text-center">
-          <div class="text-2xl font-bold text-rate-easy">${recap.reviews_done}</div>
-          <div class="text-xs text-muted mt-1">Reviews</div>
-        </div>
-      </div>
+      <section class="mt-5 bg-surface rounded-[14px] overflow-hidden">
+        ${rows.map(([label, value], i) => `
+          <div class="pl-4"><div class="flex items-center justify-between min-h-12 pr-4 ${i < rows.length - 1 ? 'border-b border-line' : ''}">
+            <span class="text-[17px] text-ink">${label}</span><span class="text-[17px] text-ink">${value}</span>
+          </div></div>`).join('')}
+      </section>
 
-      <h2 class="text-sm font-semibold text-muted uppercase mb-3">New words this week</h2>
-      ${recap.new_words.length === 0 ? `
-        <p class="text-muted text-sm mb-6">No new words added this week.</p>` : `
-        <div class="space-y-2 mb-6">
-          ${recap.new_words.map(w => {
-            const p = previewParts(w.front);
+      ${byDay.size === 0 ? `
+        ${groupLabel('New cards')}
+        <p class="px-4 text-[15px] text-muted">No cards added this week.</p>` : [...byDay].map(([day, words]) => `
+        ${groupLabel(escHtml(day))}
+        <section class="bg-surface rounded-[14px] overflow-hidden">
+          ${words.map((w, i) => {
+            const front = previewParts(w.front), back = previewParts(w.back);
+            const ct = cardText(deckById[w.deck_id]);
+            const label = w.type && w.type !== 'vocab' ? ({ phrasal: 'Phrasal verb' }[w.type] || w.type) : '';
             return `
-            <div class="bg-surface rounded-xl p-3 flex items-center gap-3">
-              ${p.imageUrl ? `<img src="${escHtml(p.imageUrl)}" loading="lazy" class="w-11 h-11 rounded-lg object-cover flex-shrink-0">` : ''}
-              <span class="text-ink text-sm font-medium truncate flex-1 min-w-0">${escHtml(p.text || (p.imageUrl ? '' : 'Image'))}</span>
-              <div class="flex items-center gap-2 flex-shrink-0">
-                ${typeBadge(w.type)}
-                <span class="text-xs text-muted">${fmtDate(w.created_at)}</span>
-              </div>
-            </div>`;
+            <div class="pl-4"><button onclick="navigate('#/cards/${w.id}/edit?deck=${w.deck_id}&ret=${encodeURIComponent('#/recap')}')"
+              class="w-full flex items-center gap-3 min-h-[60px] py-2 pr-4 text-left active:opacity-60 ${i < words.length - 1 ? 'border-b border-line' : ''}">
+              ${front.imageUrl ? `<img src="${escHtml(front.imageUrl)}" alt="" loading="lazy" class="w-10 h-10 rounded-lg object-cover flex-shrink-0">` : ''}
+              <span class="flex-1 min-w-0"${ct.attr}>
+                <span class="block truncate text-[17px] leading-[22px] text-ink">${escHtml(front.text || 'Image')}</span>
+                <span class="block truncate text-[15px] leading-5 text-muted">${escHtml(back.text || (back.imageUrl ? 'Image' : ''))}</span>
+              </span>
+              <span class="flex-shrink-0 max-w-[35%] truncate text-[13px] text-muted">${escHtml(w.deck_name)}${label ? ` · ${escHtml(label)}` : ''}</span>
+            </button></div>`;
           }).join('')}
-        </div>`}
-
+        </section>`).join('')}
     </div>
   `;
 }
