@@ -143,6 +143,8 @@ Cập nhật lần cuối: 2026-09-26. Nguồn gốc: doc kiến trúc trên cla
 ## Giao diện (redesign 2026-10)
 
 - Hướng iOS-native: font hệ thống (SF Pro), list nhóm kiểu Settings, một màu nhấn terracotta; token màu ở `public/index.html` (mọi cặp chữ/nền đạt WCAG AA). Icon "spaced dots" sinh bằng `scripts/generate-icons.js`.
-- Tab bar: Today (thay Home) và Progress (Stats). Today: tổng thẻ đến hạn + ước lượng phút (`sec_per_card` từ `/api/stats`) + streak; mỗi deck hiện New / Relearn / Due (`new_due`, `relearn_due` từ `/api/decks`) và lần học gần nhất.
+- Tab bar: Today (thay Home), Progress (Stats) và Settings (`#/settings`: giao diện, nhắc nhở, email, nút test, phiên bản). Today: tổng thẻ đến hạn + ước lượng phút (`sec_per_card` từ `/api/stats`) + streak; mỗi deck hiện New / Relearn / Due (`new_due`, `relearn_due` từ `/api/decks`) và lần học gần nhất.
 - Study: không còn thẻ lật 3D; câu hỏi ở trên, đáp án hiện bên dưới; nút "Show answer" ở vùng ngón cái; 4 nút chấm điểm một hàng kèm khoảng cách ôn tiếp theo; menu "⋯" chứa sửa thẻ, yêu thích, đọc to.
+- Không dùng `alert`/`confirm` của trình duyệt: `confirmSheet()` (action sheet kiểu iOS) và `showToast()` trong `app.js`. Các sheet dùng `sheetHTML()` (Cancel · tiêu đề · Save) và class `.sheet` cho animation.
+- Deck: danh sách nhóm, chạm vào dòng để sửa thẻ; xoá thẻ nằm trong màn hình sửa. Trình sửa thẻ: thanh Cancel/Save cố định ở trên, một công tắc Edit/Preview chung.
 

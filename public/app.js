@@ -28,11 +28,11 @@ function updateThemeButtons() {
   const pref = getThemePref();
   document.querySelectorAll('.theme-btn').forEach(btn => {
     const active = btn.dataset.theme === pref;
-    btn.classList.toggle('bg-accent', active);
-    btn.classList.toggle('border-accent', active);
-    btn.classList.toggle('text-on-accent', active);
-    btn.classList.toggle('border-line', !active);
+    btn.classList.toggle('bg-surface', active);
+    btn.classList.toggle('text-ink', active);
+    btn.classList.toggle('shadow-sm', active);
     btn.classList.toggle('text-muted', !active);
+    btn.setAttribute('aria-checked', active);
   });
 }
 
@@ -330,11 +330,14 @@ function router() {
     const params = new URLSearchParams(hash.split('?')[1] || '');
     renderEditCard(app, m[1], params.get('deck'), params.get('ret'));
   } else if (hash === '#/recap') {
-    setActiveNav('');
+    setActiveNav('stats');
     renderRecap(app);
   } else if (hash === '#/stats') {
     setActiveNav('stats');
     renderStats(app);
+  } else if (hash === '#/settings') {
+    setActiveNav('settings');
+    renderSettings(app);
   } else {
     navigate('#/');
   }
@@ -387,6 +390,74 @@ function hideModalEl(id) {
   el.classList.remove('modal-open');
   setTimeout(() => el.classList.add('hidden'), 200);
 }
+/* ── Shared UI: iOS-style sheets, confirm sheet, toast ── */
+const ICON = {
+  chevronLeft: '<svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
+  chevronRight: '<svg class="w-5 h-5 text-muted/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+  plus: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  more: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
+};
+
+// Bottom sheet with an iOS header: Cancel · Title · Save. `body` is markup.
+function sheetHTML(id, title, body, { cancel, save, saveLabel = 'Save', saveId = '' }) {
+  return `
+    <div id="${id}" class="sheet hidden fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onclick="if (event.target === this) ${cancel}">
+      <div class="w-full max-w-md bg-paper rounded-t-[14px]" style="padding-bottom: calc(env(safe-area-inset-bottom) + 12px)">
+        <div class="mx-auto mt-2 w-9 h-[5px] rounded-full bg-line"></div>
+        <div class="flex items-center justify-between px-2 h-12">
+          <button onclick="${cancel}" class="h-11 px-2 text-[17px] text-accent active:opacity-60">Cancel</button>
+          <span class="text-[17px] font-semibold text-ink">${title}</span>
+          <button ${saveId ? `id="${saveId}"` : ''} onclick="${save}" class="h-11 px-2 text-[17px] font-semibold text-accent active:opacity-60 disabled:opacity-40">${saveLabel}</button>
+        </div>
+        <div class="px-4 pt-1">${body}</div>
+      </div>
+    </div>`;
+}
+
+// Grouped-list text field used inside sheets and forms.
+const fieldCls = 'w-full bg-surface rounded-[10px] px-4 text-[17px] text-ink placeholder:text-muted/70 focus:outline-none focus:ring-2 focus:ring-accent/40';
+
+// Replaces window.confirm: resolves true when the action is chosen.
+function confirmSheet({ title, message = '', confirm = 'Delete', destructive = true }) {
+  return new Promise(resolve => {
+    const el = document.createElement('div');
+    el.className = 'fixed inset-0 z-[70] bg-black/40 flex items-end';
+    el.innerHTML = `
+      <div class="w-full max-w-md mx-auto px-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 8px)">
+        <div class="bg-surface rounded-[14px] overflow-hidden text-center">
+          <div class="px-4 pt-4 pb-3 border-b border-line">
+            <p class="text-[13px] font-semibold text-muted">${escHtml(title)}</p>
+            ${message ? `<p class="mt-1 text-[13px] text-muted">${escHtml(message)}</p>` : ''}
+          </div>
+          <button data-ok class="w-full h-14 text-[20px] ${destructive ? 'text-rate-again' : 'text-accent'} active:bg-base">${escHtml(confirm)}</button>
+        </div>
+        <button data-cancel class="mt-2 w-full h-14 rounded-[14px] bg-surface text-[20px] font-semibold text-accent active:bg-base">Cancel</button>
+      </div>`;
+    const done = ok => { el.remove(); resolve(ok); };
+    el.addEventListener('click', e => {
+      if (e.target.closest('[data-ok]')) done(true);
+      else if (e.target === el || e.target.closest('[data-cancel]')) done(false);
+    });
+    document.body.appendChild(el);
+  });
+}
+
+// Replaces window.alert for short notices.
+function showToast(text) {
+  document.getElementById('app-toast')?.remove();
+  const el = document.createElement('div');
+  el.id = 'app-toast';
+  el.setAttribute('role', 'status');
+  el.className = 'fixed left-4 right-4 z-[80] max-w-md mx-auto bg-ink text-paper text-[15px] rounded-xl px-4 py-3 shadow-lg';
+  el.style.bottom = 'calc(env(safe-area-inset-bottom) + 72px)';
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2800);
+}
+
+// Section label above a grouped list.
+const groupLabel = text => `<p class="mt-7 mb-1.5 px-4 text-[13px] text-muted uppercase">${text}</p>`;
+
 function loading(app) {
   app.innerHTML = `<div class="p-4 pt-6 space-y-3 animate-pulse">
     <div class="h-8 bg-surface rounded w-1/3"></div>
@@ -477,23 +548,12 @@ async function renderHome(app) {
       </button>
     </div>
 
-    <!-- New Deck Modal -->
-    <div id="new-deck-modal" class="hidden fixed inset-0 bg-black/70 flex items-end justify-center z-50 p-4" onclick="hideNewDeckModal(event)">
-      <div class="bg-surface rounded-2xl p-6 w-full max-w-sm mb-2" onclick="event.stopPropagation()">
-        <h2 class="text-lg font-semibold text-ink mb-4 font-heading">New Deck</h2>
-        <input id="new-deck-name" type="text" placeholder="Deck name"
-          class="w-full bg-base border border-line rounded-xl px-4 h-12 text-ink focus:outline-none focus:border-accent mb-3"/>
-        <label class="block text-xs font-semibold text-muted uppercase mb-1">Template</label>
-        <select id="new-deck-preset"
-          class="w-full h-12 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent mb-4">${presetOptions()}</select>
-        <div class="flex gap-3">
-          <button onclick="hideNewDeckModal()"
-            class="flex-1 h-12 border border-line rounded-xl text-muted hover:text-ink transition-colors">Cancel</button>
-          <button onclick="createDeck()"
-            class="flex-1 h-12 bg-accent hover:bg-accent-dark rounded-xl text-on-accent font-semibold transition-colors">Create</button>
-        </div>
-      </div>
-    </div>
+    ${sheetHTML('new-deck-modal', 'New Deck', `
+      <input id="new-deck-name" type="text" placeholder="Deck name" class="${fieldCls} h-12"/>
+      <label for="new-deck-preset" class="block mt-5 mb-1.5 px-4 text-[13px] text-muted uppercase">Template</label>
+      <select id="new-deck-preset" class="${fieldCls} h-12 appearance-none">${presetOptions()}</select>
+      <p class="mt-1.5 px-4 text-[13px] text-muted">Sets the field names and the language cards are read aloud in. You can change it later.</p>
+    `, { cancel: 'hideNewDeckModal()', save: 'createDeck()', saveLabel: 'Create' })}
   `;
 }
 
@@ -527,199 +587,111 @@ async function renderDeckDetail(app, deckId) {
   const dueCount = cards.filter(c => c.next_review <= Date.now()).length;
   const favoriteCount = cards.filter(c => c.is_favorite).length;
   const typeList = typeDatalist('type-list', cards);
+  const menuRow = (onclick, label, cls = 'text-ink', last = false) => `
+    <div class="pl-4"><button onclick="${onclick}" class="w-full min-h-[52px] pr-4 flex items-center text-left text-[17px] ${cls} ${last ? '' : 'border-b border-line'} active:opacity-60">${label}</button></div>`;
 
   app.innerHTML = `
-    <div class="p-4 pt-6">
-      <div class="flex items-center gap-2 mb-5">
-        <button onclick="navigate('#/')"
-          class="w-10 h-10 flex items-center justify-center text-muted hover:text-ink transition-colors -ml-2 flex-shrink-0">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-          </svg>
-        </button>
-        <div class="flex-1 min-w-0">
-          <h1 class="text-xl font-bold text-ink truncate font-heading">${escHtml(deck.name)}</h1>
-          <p class="text-sm text-muted">${cards.length} cards${dueCount > 0 ? ` · ${dueCount} due` : ''}</p>
-        </div>
-      </div>
+    <div class="px-4 pt-1 pb-44">
+      <button onclick="navigate('#/')" class="h-11 -ml-2 pr-2 flex items-center text-[17px] text-accent active:opacity-60">${ICON.chevronLeft}Today</button>
+      <h1 class="px-1 text-[34px] leading-[41px] font-bold text-ink font-heading break-words">${escHtml(deck.name)}</h1>
+      <p class="px-1 mt-1 text-[15px] text-muted">${cards.length} card${cards.length === 1 ? '' : 's'}${dueCount ? ` · ${dueCount} due` : ''}</p>
 
-      <button id="study-fav-btn" onclick="navigate('#/study/${deckId}?favorites=1')"
-        class="${favoriteCount > 0 ? '' : 'hidden'} w-full h-11 mb-5 border border-rate-hard/40 text-rate-hard rounded-xl font-semibold text-sm hover:bg-rate-hard/10 transition-colors flex items-center justify-center gap-2">
-        ${starSVG(true)} <span id="study-fav-count">Study Favorites (${favoriteCount})</span>
-      </button>
+      <section id="study-fav-btn" class="${favoriteCount ? '' : 'hidden'} mt-6 bg-surface rounded-[14px] overflow-hidden">
+        <button onclick="navigate('#/study/${deckId}?favorites=1')" class="w-full min-h-[52px] px-4 flex items-center gap-3 text-left active:bg-base">
+          <span class="text-rate-hard">${starSVG(true)}</span>
+          <span class="flex-1 text-[17px] text-ink">Study favorites</span>
+          <span id="study-fav-count" class="text-[17px] text-muted">${favoriteCount}</span>${ICON.chevronRight}
+        </button>
+      </section>
 
       ${cards.length === 0 ? `
-        <div class="text-center py-14 text-muted">
-          <p class="font-medium text-muted">No cards yet</p>
-          <p class="text-sm mt-1">Add cards or use Import</p>
+        <div class="mt-10 px-1">
+          <p class="text-[17px] font-semibold text-ink">No cards yet</p>
+          <p class="mt-1 text-[15px] text-muted">Tap + to add one, or import a list from the ⋯ menu.</p>
         </div>` : `
-        <div class="space-y-2 pb-24">
-          ${cards.map(c => {
+        ${groupLabel('Cards')}
+        <section class="bg-surface rounded-[14px] overflow-hidden">
+          ${cards.map((c, i) => {
             const front = previewParts(c.front);
             const back = previewParts(c.back);
             const thumb = front.imageUrl || back.imageUrl;
             return `
-            <div class="bg-surface rounded-xl p-4 flex items-center gap-3">
-              ${thumb ? `<img src="${escHtml(thumb)}" loading="lazy" class="w-11 h-11 rounded-lg object-cover flex-shrink-0">` : ''}
-              <div class="flex-1 min-w-0">
-                <p class="text-ink truncate text-sm font-medium">${escHtml(front.text || (front.imageUrl ? 'Image' : ''))}</p>
-                <p class="text-muted text-xs truncate mt-0.5">${escHtml(back.text || (back.imageUrl ? 'Image' : ''))}</p>
-              </div>
-              <div class="flex gap-1 flex-shrink-0">
-                <button id="fav-btn-${c.id}" data-fav="${c.is_favorite ? '1' : '0'}" onclick="toggleFavoriteInList(${c.id}, 'fav-btn-${c.id}')"
-                  class="w-9 h-9 flex items-center justify-center ${c.is_favorite ? 'text-rate-hard' : 'text-muted'} hover:text-rate-hard transition-colors rounded-lg hover:bg-base">
-                  ${starSVG(c.is_favorite)}
-                </button>
-                <button onclick="navigate('#/cards/${c.id}/edit?deck=${deckId}')"
-                  class="w-9 h-9 flex items-center justify-center text-muted hover:text-ink transition-colors rounded-lg hover:bg-base">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                  </svg>
-                </button>
-                <button onclick="deleteCard(${c.id}, ${deckId})"
-                  class="w-9 h-9 flex items-center justify-center text-muted hover:text-rate-again transition-colors rounded-lg hover:bg-base">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                  </svg>
-                </button>
-              </div>
-            </div>`;
+            <div class="pl-4"><div class="flex items-center min-h-[60px] ${i < cards.length - 1 ? 'border-b border-line' : ''}">
+              <button onclick="navigate('#/cards/${c.id}/edit?deck=${deckId}')" class="flex-1 min-w-0 flex items-center gap-3 py-2 text-left active:opacity-60">
+                ${thumb ? `<img src="${escHtml(thumb)}" alt="" loading="lazy" class="w-10 h-10 rounded-lg object-cover flex-shrink-0">` : ''}
+                <span class="min-w-0">
+                  <span class="block truncate text-[17px] leading-[22px] text-ink">${escHtml(front.text || (front.imageUrl ? 'Image' : ''))}</span>
+                  <span class="block truncate text-[15px] leading-5 text-muted">${escHtml(back.text || (back.imageUrl ? 'Image' : ''))}</span>
+                </span>
+              </button>
+              <button id="fav-btn-${c.id}" data-fav="${c.is_favorite ? '1' : '0'}" onclick="toggleFavoriteInList(${c.id}, 'fav-btn-${c.id}')"
+                aria-label="${c.is_favorite ? 'Remove from favorites' : 'Add to favorites'}"
+                class="w-11 h-11 mr-1 flex-shrink-0 flex items-center justify-center ${c.is_favorite ? 'text-rate-hard' : 'text-muted/50'}">${starSVG(c.is_favorite)}</button>
+            </div></div>`;
           }).join('')}
-        </div>`}
+        </section>`}
     </div>
 
     <!-- Thumb bar: sits just above #bottom-nav (49px + 1px border + safe area) -->
-    <div class="fixed left-0 right-0 z-30 px-4 pb-4 pt-2 bg-paper/95 backdrop-blur border-t border-line/60 flex gap-2"
+    <div class="fixed left-0 right-0 z-30 px-4 pt-2 pb-3 bg-paper/95 backdrop-blur border-t border-line flex gap-2"
       style="bottom: calc(50px + env(safe-area-inset-bottom))">
-      <button onclick="${dueCount > 0 ? `navigate('#/study/${deckId}')` : 'void(0)'}"
-        class="flex-1 h-14 ${dueCount > 0 ? 'bg-accent hover:bg-accent-dark text-on-accent' : 'bg-surface text-muted cursor-not-allowed'} rounded-2xl font-semibold text-base transition-colors">
-        ${dueCount > 0 ? `Study (${dueCount})` : 'No cards due'}
+      <button onclick="${dueCount > 0 ? `navigate('#/study/${deckId}')` : 'void(0)'}" ${dueCount ? '' : 'aria-disabled="true"'}
+        class="flex-1 h-[52px] rounded-[14px] text-[17px] font-semibold ${dueCount > 0 ? 'bg-accent text-on-accent active:opacity-80' : 'bg-base text-muted'}">
+        ${dueCount > 0 ? `Study ${dueCount}` : 'Nothing due'}
       </button>
-      <button onclick="showQuickAdd()" aria-label="Add card"
-        class="w-14 h-14 bg-accent hover:bg-accent-dark rounded-2xl text-on-accent text-3xl font-light flex items-center justify-center transition-colors flex-shrink-0">+</button>
-      <button onclick="showDeckMenu()" aria-label="Deck menu"
-        class="w-14 h-14 border border-line rounded-2xl text-ink/80 hover:text-ink flex items-center justify-center transition-colors flex-shrink-0">
-        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
-      </button>
+      <button onclick="showQuickAdd()" aria-label="Add card" class="w-[52px] h-[52px] rounded-[14px] bg-base text-ink flex items-center justify-center active:opacity-60">${ICON.plus}</button>
+      <button onclick="showDeckMenu()" aria-label="Deck options" class="w-[52px] h-[52px] rounded-[14px] bg-base text-ink flex items-center justify-center active:opacity-60">${ICON.more}</button>
     </div>
 
-    <!-- Quick Add -->
-    <div id="quick-add" class="hidden fixed inset-0 bg-black/70 flex items-end justify-center z-50" onclick="hideQuickAdd(event)">
-      <div class="bg-surface rounded-t-2xl p-4 w-full max-w-md safe-bottom" onclick="event.stopPropagation()">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold text-ink font-heading">Add card <span id="qa-count" class="text-sm text-accent font-normal"></span></h2>
-          <button onclick="expandQuickAdd(${deckId})" class="text-xs text-accent">More options (images)</button>
+    ${sheetHTML('quick-add', `Add card <span id="qa-count" class="text-[15px] font-normal text-muted"></span>`, `
+      <div class="space-y-2">
+        <textarea id="qa-front" rows="2" placeholder="${escHtml(deck.front_label)}" class="${fieldCls} py-3 resize-none"></textarea>
+        <textarea id="qa-back" rows="2" placeholder="${escHtml(deck.back_label)}" class="${fieldCls} py-3 resize-none"></textarea>
+        <textarea id="qa-example" rows="1" placeholder="${escHtml(deck.example_label)} (optional)" class="${fieldCls} py-3 resize-none"></textarea>
+        <input id="qa-type" list="type-list" maxlength="30" placeholder="Label (optional)" class="${fieldCls} h-11"/>
+        ${typeList}
+      </div>
+      <button onclick="expandQuickAdd(${deckId})" class="mt-1 h-11 px-1 text-[15px] text-accent active:opacity-60">More options and images</button>
+    `, { cancel: `closeQuickAdd(${deckId})`, save: `saveQuickAdd(${deckId})`, saveLabel: 'Add', saveId: 'qa-save' })}
+
+    <div id="deck-menu" class="sheet hidden fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onclick="hideDeckMenu(event)">
+      <div class="w-full max-w-md px-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 8px)">
+        <div class="bg-surface rounded-[14px] overflow-hidden">
+          ${menuRow(`navigate('#/decks/${deckId}/import')`, 'Import cards')}
+          ${menuRow('showTemplateModal()', 'Card template and speech')}
+          ${menuRow('showRenameModal()', 'Rename deck')}
+          <div class="pl-4"><label class="min-h-[60px] pr-4 py-2 flex items-center gap-3 border-b border-line">
+            <span class="flex-1">
+              <span class="block text-[17px] text-ink">Target retention</span>
+              <span id="retention-hint" class="block text-[13px] text-muted">Higher means remembering more, with more reviews</span>
+            </span>
+            <select onchange="saveRetention(${deckId}, this.value)" class="h-9 bg-base rounded-lg px-2 text-[15px] text-ink focus:outline-none">
+              ${[0.8, 0.85, 0.9, 0.95].map(r => `<option value="${r}"${Math.abs(r - deck.target_retention) < 1e-9 ? ' selected' : ''}>${Math.round(r * 100)}%</option>`).join('')}
+            </select>
+          </label></div>
+          ${menuRow(`deleteDeck(${deckId})`, 'Delete deck', 'text-rate-again', true)}
         </div>
-        <div class="space-y-2">
-          <textarea id="qa-front" rows="2" placeholder="${escHtml(deck.front_label)}"
-            class="w-full bg-base border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none"></textarea>
-          <textarea id="qa-back" rows="2" placeholder="${escHtml(deck.back_label)}"
-            class="w-full bg-base border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none"></textarea>
-          <textarea id="qa-example" rows="1" placeholder="${escHtml(deck.example_label)} (optional)"
-            class="w-full bg-base border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none"></textarea>
-          <input id="qa-type" list="type-list" maxlength="30" placeholder="Label (optional)"
-            class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
-          ${typeList}
-        </div>
-        <div class="flex gap-2 mt-3">
-          <button onclick="closeQuickAdd(${deckId})"
-            class="h-14 px-5 border border-line rounded-2xl text-muted hover:text-ink transition-colors">Done</button>
-          <button id="qa-save" onclick="saveQuickAdd(${deckId})"
-            class="flex-1 h-14 bg-accent hover:bg-accent-dark rounded-2xl text-on-accent font-semibold transition-colors">Save &amp; next</button>
-        </div>
+        <button onclick="hideDeckMenu()" class="mt-2 w-full h-14 rounded-[14px] bg-surface text-[17px] font-semibold text-accent active:bg-base">Done</button>
       </div>
     </div>
 
-    <!-- Deck Menu -->
-    <div id="deck-menu" class="hidden fixed inset-0 bg-black/70 flex items-end justify-center z-50 p-4" onclick="hideDeckMenu(event)">
-      <div class="bg-surface rounded-2xl p-3 w-full max-w-sm mb-2" onclick="event.stopPropagation()">
-        <button onclick="navigate('#/decks/${deckId}/import')"
-          class="w-full h-12 flex items-center gap-3 px-4 rounded-xl text-ink/80 hover:text-ink hover:bg-base transition-colors">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4"/>
-          </svg>
-          Import cards
-        </button>
-        <button onclick="showTemplateModal()"
-          class="w-full h-12 flex items-center gap-3 px-4 rounded-xl text-ink/80 hover:text-ink hover:bg-base transition-colors">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h10M4 18h7"/>
-          </svg>
-          Card template &amp; speech
-        </button>
-        <button onclick="showRenameModal()"
-          class="w-full h-12 flex items-center gap-3 px-4 rounded-xl text-ink/80 hover:text-ink hover:bg-base transition-colors">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-          </svg>
-          Rename Deck
-        </button>
-        <label class="w-full min-h-12 flex items-center gap-3 px-4 py-2 rounded-xl text-ink/80">
-          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-          </svg>
-          <span class="flex-1">
-            Target retention
-            <span id="retention-hint" class="block text-xs text-muted">Higher = remember more, review more often</span>
-          </span>
-          <select onchange="saveRetention(${deckId}, this.value)"
-            class="h-10 bg-base border border-line rounded-lg px-2 text-ink text-sm focus:outline-none focus:border-accent">
-            ${[0.8, 0.85, 0.9, 0.95].map(r => `<option value="${r}"${Math.abs(r - deck.target_retention) < 1e-9 ? ' selected' : ''}>${Math.round(r * 100)}%</option>`).join('')}
-          </select>
-        </label>
-        <button onclick="deleteDeck(${deckId})"
-          class="w-full h-12 flex items-center gap-3 px-4 rounded-xl text-rate-again hover:text-rate-again hover:bg-base transition-colors">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-          </svg>
-          Delete Deck
-        </button>
+    ${sheetHTML('template-modal', 'Card template', `
+      <select id="tpl-preset" onchange="applyPreset(this.value)" class="${fieldCls} h-11 appearance-none">
+        <option value="">Start from a preset…</option>${presetOptions()}
+      </select>
+      ${groupLabel('Field names')}
+      <div class="bg-surface rounded-[10px] overflow-hidden">
+        ${[['tpl-front', deck.front_label, 'Front'], ['tpl-back', deck.back_label, 'Back'], ['tpl-example', deck.example_label, 'Example']].map(([id, v, ph], i) => `
+        <div class="pl-4"><input id="${id}" maxlength="40" value="${escHtml(v)}" placeholder="${ph}" aria-label="${ph} label"
+          class="w-full h-11 pr-4 bg-transparent text-[17px] text-ink focus:outline-none ${i < 2 ? 'border-b border-line' : ''}"/></div>`).join('')}
       </div>
-    </div>
+      <label for="tpl-lang" class="block mt-5 mb-1.5 px-4 text-[13px] text-muted uppercase">Read aloud in</label>
+      <select id="tpl-lang" class="${fieldCls} h-11 appearance-none">${langOptions(deck.tts_lang)}</select>
+    `, { cancel: 'hideTemplateModal()', save: `saveTemplate(${deckId})` })}
 
-    <!-- Template Modal -->
-    <div id="template-modal" class="hidden fixed inset-0 bg-black/70 flex items-end justify-center z-50" onclick="hideTemplateModal(event)">
-      <div class="bg-surface rounded-t-2xl p-4 w-full max-w-md safe-bottom" onclick="event.stopPropagation()">
-        <h2 class="text-lg font-semibold text-ink mb-3 font-heading">Card template</h2>
-        <select id="tpl-preset" onchange="applyPreset(this.value)"
-          class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent mb-3">
-          <option value="">Start from preset…</option>${presetOptions()}
-        </select>
-        <div class="space-y-2">
-          <input id="tpl-front" maxlength="40" value="${escHtml(deck.front_label)}" placeholder="Front label"
-            class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
-          <input id="tpl-back" maxlength="40" value="${escHtml(deck.back_label)}" placeholder="Back label"
-            class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
-          <input id="tpl-example" maxlength="40" value="${escHtml(deck.example_label)}" placeholder="Example label"
-            class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
-          <label class="block text-xs font-semibold text-muted uppercase pt-1">Speech language</label>
-          <select id="tpl-lang"
-            class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent">${langOptions(deck.tts_lang)}</select>
-        </div>
-        <div class="flex gap-2 mt-3">
-          <button onclick="hideTemplateModal()"
-            class="h-14 px-5 border border-line rounded-2xl text-muted hover:text-ink transition-colors">Cancel</button>
-          <button onclick="saveTemplate(${deckId})"
-            class="flex-1 h-14 bg-accent hover:bg-accent-dark rounded-2xl text-on-accent font-semibold transition-colors">Save</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Rename Modal -->
-    <div id="rename-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div class="bg-surface rounded-2xl p-6 w-full max-w-sm">
-        <h2 class="text-lg font-semibold text-ink mb-4 font-heading">Rename Deck</h2>
-        <input id="rename-input" type="text" value="${escHtml(deck.name)}"
-          class="w-full bg-base border border-line rounded-xl px-4 h-12 text-ink focus:outline-none focus:border-accent mb-4"/>
-        <div class="flex gap-3">
-          <button onclick="hideRenameModal()"
-            class="flex-1 h-12 border border-line rounded-xl text-muted hover:text-ink transition-colors">Cancel</button>
-          <button onclick="renameDeck(${deckId})"
-            class="flex-1 h-12 bg-accent hover:bg-accent-dark rounded-xl text-on-accent font-semibold transition-colors">Save</button>
-        </div>
-      </div>
-    </div>
-
+    ${sheetHTML('rename-modal', 'Rename Deck', `
+      <input id="rename-input" type="text" value="${escHtml(deck.name)}" aria-label="Deck name" class="${fieldCls} h-12"/>
+    `, { cancel: 'hideRenameModal()', save: `renameDeck(${deckId})` })}
   `;
 }
 
@@ -732,9 +704,7 @@ function typeDatalist(id, cards) {
 }
 
 function showTemplateModal() { hideDeckMenu(); showModal('template-modal'); }
-function hideTemplateModal(e) {
-  if (!e || e.target === document.getElementById('template-modal')) hideModalEl('template-modal');
-}
+function hideTemplateModal() { hideModalEl('template-modal'); }
 function applyPreset(key) {
   const p = DECK_PRESETS[key];
   if (!p) return;
@@ -752,8 +722,8 @@ async function saveTemplate(deckId) {
   renderDeckDetail(document.getElementById('app'), deckId);
 }
 
-// Quick-add sheet: stays open between saves; the list refreshes only on Done
-// (re-rendering the page per save would wipe the open sheet).
+// Quick-add sheet: stays open between saves; the list refreshes only when it
+// closes (re-rendering the page per save would wipe the open sheet).
 let quickAddCount = 0;
 function showQuickAdd() {
   quickAddCount = 0;
@@ -767,9 +737,6 @@ function expandQuickAdd(deckId) {
   pendingDraft = Object.fromEntries(['front', 'back', 'example', 'type'].map(k => [k, document.getElementById(`qa-${k}`).value]));
   navigate(`#/cards/new?deck=${deckId}`);
 }
-function hideQuickAdd(e) {
-  if (e.target === document.getElementById('quick-add')) hideModalEl('quick-add');
-}
 function closeQuickAdd(deckId) {
   hideModalEl('quick-add');
   if (quickAddCount) renderDeckDetail(document.getElementById('app'), deckId);
@@ -779,21 +746,19 @@ async function saveQuickAdd(deckId) {
   const back = document.getElementById('qa-back').value.trim();
   const example = document.getElementById('qa-example').value.trim();
   const type = document.getElementById('qa-type').value;
-  if (!front || !back) { alert('Both front and back are required.'); return; }
+  if (!front || !back) { showToast('Fill in both the first two fields.'); return; }
 
   const btn = document.getElementById('qa-save');
   btn.disabled = true;
-  btn.textContent = 'Saving...';
   try {
     await api(`/api/decks/${deckId}/cards`, { method: 'POST', body: JSON.stringify({ front, back, example, type }) });
   } catch {
     // Offline: not queued (by design) — keep what was typed.
     btn.disabled = false;
-    btn.textContent = 'Offline — not saved. Tap to retry';
+    showToast('You’re offline. The card wasn’t saved.');
     return;
   }
   btn.disabled = false;
-  btn.textContent = 'Save & next';
   quickAddCount++;
   document.getElementById('qa-count').textContent = `· ${quickAddCount} added`;
   for (const id of ['qa-front', 'qa-back', 'qa-example']) document.getElementById(id).value = '';
@@ -818,18 +783,19 @@ async function renameDeck(deckId) {
 async function saveRetention(deckId, value) {
   const hint = document.getElementById('retention-hint');
   const res = await api(`/api/decks/${deckId}/retention`, { method: 'PUT', body: JSON.stringify({ targetRetention: Number(value) }) });
-  if (hint) hint.textContent = res ? `Saved — applies from each card's next review` : 'Could not save';
+  if (hint) hint.textContent = res ? 'Saved. Applies from each card’s next review.' : 'Couldn’t save';
 }
 async function deleteDeck(deckId) {
   hideDeckMenu();
-  if (!confirm('Delete this deck and all its cards? This cannot be undone.')) return;
+  const deck = deckById[deckId];
+  if (!await confirmSheet({ title: `Delete “${deck?.name || 'this deck'}”?`, message: `Its ${deck?.total_count ?? ''} cards and their review history are deleted too. This can’t be undone.`, confirm: 'Delete Deck' })) return;
   await api(`/api/decks/${deckId}`, { method: 'DELETE' });
   navigate('#/');
 }
-async function deleteCard(cardId, deckId) {
-  if (!confirm('Delete this card?')) return;
+async function deleteCard(cardId, backHash) {
+  if (!await confirmSheet({ title: 'Delete this card?', message: 'Its review history is deleted too.', confirm: 'Delete Card' })) return;
   await api(`/api/cards/${cardId}`, { method: 'DELETE' });
-  renderDeckDetail(document.getElementById('app'), deckId);
+  navigate(backHash);
 }
 /* ════════════════════════════════════════
    Screen: Import (CSV / TSV / "front | back")
@@ -1090,26 +1056,20 @@ function toggleFavoriteInList(cardId, btnId) {
   const favorite = btn.dataset.fav !== '1';
   btn.dataset.fav = favorite ? '1' : '0';
   btn.classList.toggle('text-rate-hard', favorite);
-  btn.classList.toggle('text-muted', !favorite);
+  btn.classList.toggle('text-muted/50', !favorite);
+  btn.setAttribute('aria-label', favorite ? 'Remove from favorites' : 'Add to favorites');
   btn.innerHTML = starSVG(favorite);
   if (favorite) popFavorite(btn);
   api(`/api/cards/${cardId}/favorite`, { method: 'POST', body: JSON.stringify({ favorite }) }).catch(() => {});
 
-  // Keep the "Study Favorites" button in sync without a full re-fetch —
-  // it was previously computed once at render and never touched again.
+  // Keep the "Study favorites" row in sync without a full re-fetch.
   const count = document.querySelectorAll('[id^="fav-btn-"][data-fav="1"]').length;
-  const favBtn = document.getElementById('study-fav-btn');
-  if (favBtn) {
-    favBtn.classList.toggle('hidden', count === 0);
-    document.getElementById('study-fav-count').textContent = `Study Favorites (${count})`;
-  }
+  document.getElementById('study-fav-btn')?.classList.toggle('hidden', count === 0);
+  const countEl = document.getElementById('study-fav-count');
+  if (countEl) countEl.textContent = count;
 }
 
-const studyIcon = {
-  close: '<svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
-  more: '<svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>',
-  star: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>',
-};
+/* Study screen */
 
 function drawStudyCard() {
   const app = document.getElementById('app');
@@ -1198,7 +1158,7 @@ function drawStudyCard() {
       </button>`).join('')}
     </div>
 
-    <div id="study-menu" class="hidden fixed inset-0 z-50 bg-black/40 flex items-end" onclick="hideStudyMenu(event)">
+    <div id="study-menu" class="sheet hidden fixed inset-0 z-50 bg-black/40 flex items-end" onclick="hideStudyMenu(event)">
       <div class="w-full bg-surface rounded-t-[14px]" style="padding-bottom: calc(env(safe-area-inset-bottom) + 8px)" onclick="event.stopPropagation()">
         <div class="mx-auto mt-2 mb-1 w-9 h-[5px] rounded-full bg-line"></div>
         ${[
@@ -1413,86 +1373,60 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
   const isNew = !cardId;
   const draft = isNew ? pendingDraft : null;
   pendingDraft = null;
-  const front = card?.front || draft?.front || '';
-  const back = card?.back || draft?.back || '';
-  const example = card?.example || draft?.example || '';
+  const values = {
+    front: card?.front || draft?.front || '',
+    back: card?.back || draft?.back || '',
+    example: card?.example || draft?.example || '',
+  };
   const cardType = card?.type || draft?.type || 'vocab';
   const backHash = ret?.startsWith('#/study/') ? ret : deckId ? `#/decks/${deckId}` : '#/';
 
+  const field = (key, label, rows, optional) => `
+    ${groupLabel(`${escHtml(label)}${optional ? ' <span class="normal-case">(optional)</span>' : ''}`)}
+    <div class="bg-surface rounded-[14px] overflow-hidden">
+      <textarea id="edit-${key}" rows="${rows}" aria-label="${escHtml(label)}" placeholder="${escHtml(label)}"
+        class="edit-field w-full bg-transparent px-4 py-3 text-[17px] leading-6 text-ink placeholder:text-muted/70 resize-none focus:outline-none">${escHtml(values[key])}</textarea>
+      <div id="preview-${key}" class="edit-preview hidden px-4 py-3 min-h-12 prose-content text-[17px] leading-6 text-ink"></div>
+      <div class="pl-4 border-t border-line">
+        <button type="button" id="image-btn-edit-${key}" onclick="pickImageFor('edit-${key}')" class="h-11 text-[15px] text-accent active:opacity-60">Add image</button>
+      </div>
+    </div>`;
+
   app.innerHTML = `
-    <div class="p-4 pt-6">
-      <div class="flex items-center gap-2 mb-6">
-        <button onclick="navigate('${backHash}')"
-          class="w-10 h-10 flex items-center justify-center text-muted hover:text-ink transition-colors -ml-2">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-          </svg>
-        </button>
-        <h1 class="text-xl font-bold text-ink font-heading">${isNew ? 'Add Card' : 'Edit Card'}</h1>
+    <div class="pb-16">
+      <div class="sticky top-0 z-20 bg-paper/95 backdrop-blur border-b border-line flex items-center justify-between h-12 px-2">
+        <button onclick="navigate('${backHash}')" class="h-11 px-2 text-[17px] text-accent active:opacity-60">Cancel</button>
+        <span class="text-[17px] font-semibold text-ink">${isNew ? 'New Card' : 'Edit Card'}</span>
+        <button id="save-btn" onclick="saveCard(${escHtml(JSON.stringify(cardId || ''))}, ${escHtml(JSON.stringify(deckId || ''))}, ${escHtml(JSON.stringify(backHash))})"
+          class="h-11 px-2 text-[17px] font-semibold text-accent active:opacity-60 disabled:opacity-40">Save</button>
       </div>
 
-      <div class="space-y-5">
-        <div>
-          <label class="text-xs font-semibold text-muted uppercase mb-2 block">${escHtml(info.front_label)}</label>
-          <textarea id="edit-front" rows="4" placeholder="${escHtml(info.front_label)}..."
-            class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none">${escHtml(front)}</textarea>
-          <button type="button" id="image-btn-edit-front" onclick="pickImageFor('edit-front')" class="mt-2 text-xs text-accent hover:text-accent-dark">+ Add image</button>
-          <div class="mt-2 p-3 bg-base rounded-xl text-ink text-sm prose-content min-h-10" id="preview-front">
-            ${front ? md(front) : '<span class="text-muted">Preview...</span>'}
-          </div>
+      <div class="px-4 pt-4">
+        <div class="grid grid-cols-2 p-0.5 rounded-[9px] bg-base" role="tablist" aria-label="Editor mode">
+          <button id="mode-edit" onclick="setEditorMode(false)" role="tab" class="h-8 rounded-[7px] text-[13px] font-semibold bg-surface text-ink shadow-sm">Edit</button>
+          <button id="mode-preview" onclick="setEditorMode(true)" role="tab" class="h-8 rounded-[7px] text-[13px] font-semibold text-muted">Preview</button>
         </div>
 
-        <div>
-          <label class="text-xs font-semibold text-muted uppercase mb-2 block">${escHtml(info.back_label)}</label>
-          <textarea id="edit-back" rows="4" placeholder="${escHtml(info.back_label)}..."
-            class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none">${escHtml(back)}</textarea>
-          <button type="button" id="image-btn-edit-back" onclick="pickImageFor('edit-back')" class="mt-2 text-xs text-accent hover:text-accent-dark">+ Add image</button>
-          <div class="mt-2 p-3 bg-base rounded-xl text-ink text-sm prose-content min-h-10" id="preview-back">
-            ${back ? md(back) : '<span class="text-muted">Preview...</span>'}
-          </div>
-        </div>
+        ${field('front', info.front_label, 3)}
+        ${field('back', info.back_label, 4)}
+        ${field('example', info.example_label, 2, true)}
 
-        <div>
-          <label class="text-xs font-semibold text-muted uppercase mb-2 block">${escHtml(info.example_label)}</label>
-          <textarea id="edit-example" rows="2" placeholder="${escHtml(info.example_label)} (optional)"
-            class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none">${escHtml(example)}</textarea>
-          <button type="button" id="image-btn-edit-example" onclick="pickImageFor('edit-example')" class="mt-2 text-xs text-accent hover:text-accent-dark">+ Add image</button>
-          <div class="mt-2 p-3 bg-base rounded-xl text-muted text-sm italic prose-content min-h-10" id="preview-example">
-            ${example ? md(example) : '<span class="text-muted">Preview...</span>'}
-          </div>
-        </div>
+        ${groupLabel('Label <span class="normal-case">(optional)</span>')}
+        <input id="edit-type" list="edit-type-list" maxlength="30" value="${escHtml(cardType === 'vocab' ? '' : cardType)}" placeholder="e.g. Idiom, Pattern, Rule" aria-label="Label"
+          class="${fieldCls} h-12 rounded-[14px]"/>
+        ${typeDatalist('edit-type-list', siblings)}
+        <p class="mt-1.5 px-4 text-[13px] text-muted">Formatting: **bold**, *italic*. Paste a screenshot to add it as an image.</p>
 
+        ${!isNew ? `
+          <section class="mt-8 bg-surface rounded-[14px] overflow-hidden">
+            <button onclick="deleteCard(${Number(cardId)}, ${escHtml(JSON.stringify(deckId ? `#/decks/${deckId}` : '#/'))})" class="w-full h-12 text-[17px] text-rate-again active:bg-base">Delete Card</button>
+          </section>` : ''}
         <input type="file" id="image-picker" accept="image/*" class="hidden" />
-
-        <div>
-          <label class="text-xs font-semibold text-muted uppercase mb-2 block">Label (optional)</label>
-          <input id="edit-type" list="edit-type-list" maxlength="30" value="${escHtml(cardType === 'vocab' ? '' : cardType)}" placeholder="e.g. Idiom, Pattern, Rule"
-            class="w-full h-12 bg-surface border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
-          ${typeDatalist('edit-type-list', siblings)}
-        </div>
-
-        <div class="flex gap-3 pt-2 pb-4">
-          <button onclick="navigate('${backHash}')"
-            class="flex-1 h-12 border border-line rounded-xl text-muted hover:text-ink transition-colors">Cancel</button>
-          <button id="save-btn" onclick="saveCard(${escHtml(JSON.stringify(cardId || ''))}, ${escHtml(JSON.stringify(deckId || ''))}, ${escHtml(JSON.stringify(backHash))})"
-            class="flex-1 h-12 bg-accent hover:bg-accent-dark rounded-xl text-on-accent font-semibold transition-colors">Save</button>
-        </div>
       </div>
     </div>
   `;
 
-  const updatePreview = (id, previewId) => {
-    document.getElementById(id).addEventListener('input', e => {
-      const val = e.target.value;
-      document.getElementById(previewId).innerHTML = val ? md(val) : '<span class="text-muted">Preview...</span>';
-    });
-  };
-  updatePreview('edit-front', 'preview-front');
-  updatePreview('edit-back', 'preview-back');
-  updatePreview('edit-example', 'preview-example');
-  wirePasteImage(document.getElementById('edit-front'));
-  wirePasteImage(document.getElementById('edit-back'));
-  wirePasteImage(document.getElementById('edit-example'));
+  for (const key of ['front', 'back', 'example']) wirePasteImage(document.getElementById(`edit-${key}`));
 
   document.getElementById('image-picker').addEventListener('change', async e => {
     const file = e.target.files[0];
@@ -1500,13 +1434,14 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
     if (!file || !imageUploadTargetId) return;
     const btn = document.getElementById(`image-btn-${imageUploadTargetId}`);
     const originalLabel = btn.textContent;
-    btn.textContent = 'Compressing...';
+    btn.textContent = 'Adding image…';
     btn.disabled = true;
     try {
+      setEditorMode(false);
       const dataUrl = await compressImageToDataUrl(file);
       insertAtCursor(document.getElementById(imageUploadTargetId), `\n![](${dataUrl})\n`);
     } catch {
-      alert('Could not process that image.');
+      showToast('That image couldn’t be added.');
     } finally {
       btn.textContent = originalLabel;
       btn.disabled = false;
@@ -1514,17 +1449,32 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
   });
 }
 
+// One Edit / Preview switch for the whole form (previews render on switch).
+function setEditorMode(preview) {
+  for (const key of ['front', 'back', 'example']) {
+    const ta = document.getElementById(`edit-${key}`);
+    const pv = document.getElementById(`preview-${key}`);
+    if (!ta || !pv) return;
+    if (preview) pv.innerHTML = ta.value.trim() ? md(ta.value) : '<span class="text-muted">Empty</span>';
+    ta.classList.toggle('hidden', preview);
+    pv.classList.toggle('hidden', !preview);
+  }
+  const on = 'bg-surface text-ink shadow-sm', off = 'text-muted';
+  const [edit, prev] = [document.getElementById('mode-edit'), document.getElementById('mode-preview')];
+  edit.className = edit.className.replace(preview ? on : off, preview ? off : on);
+  prev.className = prev.className.replace(preview ? off : on, preview ? on : off);
+}
+
 async function saveCard(cardId, deckId, backHash) {
   const front = document.getElementById('edit-front').value.trim();
   const back = document.getElementById('edit-back').value.trim();
   const example = document.getElementById('edit-example').value.trim();
   const type = document.getElementById('edit-type').value;
-  if (!front || !back) { alert('Both front and back are required.'); return; }
+  const info = deckInfo(deckId);
+  if (!front || !back) { showToast(`${info.front_label} and ${info.back_label} are both needed.`); return; }
 
   const btn = document.getElementById('save-btn');
   btn.disabled = true;
-  btn.textContent = 'Saving...';
-
   const payload = JSON.stringify({ front, back, example, type });
   try {
     if (cardId) {
@@ -1535,7 +1485,7 @@ async function saveCard(cardId, deckId, backHash) {
   } catch {
     // Offline: not queued (by design) — say so and keep what was typed.
     btn.disabled = false;
-    btn.textContent = 'Offline — not saved. Tap to retry';
+    showToast('You’re offline. The card wasn’t saved.');
     return;
   }
   navigate(backHash);
@@ -1555,92 +1505,93 @@ async function renderStats(app) {
   if (!stats) return;
 
   const maturePct = stats.total_cards ? Math.round((stats.mature_cards / stats.total_cards) * 100) : 0;
+  const rows = [
+    ['Due now', stats.due_today],
+    ['Reviewed today', stats.reviewed_today],
+    ['Streak', `${stats.streak_days} day${stats.streak_days === 1 ? '' : 's'}`],
+    ['Cards', stats.total_cards],
+    ['Mature <span class="text-muted">· interval 21+ days</span>', `${stats.mature_cards} <span class="text-muted">(${maturePct}%)</span>`],
+  ];
+  // The growth line only says something once cards were added on 2+ days in the window.
+  const showGrowth = growth && new Set(growth.map(d => d.total)).size > 2;
 
   app.innerHTML = `
-    <div class="p-4 pt-6">
-      <h1 class="text-[34px] leading-[41px] font-bold text-ink mb-6 font-heading">Statistics</h1>
+    <div class="px-4 pt-6 pb-10">
+      <h1 class="px-1 text-[34px] leading-[41px] font-bold text-ink font-heading">Progress</h1>
 
-      <div class="grid grid-cols-2 gap-3 mb-5">
-        <div class="bg-surface rounded-2xl p-4">
-          <div class="text-3xl font-bold text-accent mb-1">${stats.due_today}</div>
-          <div class="text-sm text-muted">Due Today</div>
-        </div>
-        <div class="bg-surface rounded-2xl p-4">
-          <div class="text-3xl font-bold text-ink mb-1">${stats.total_cards}</div>
-          <div class="text-sm text-muted">Total Words</div>
-        </div>
-        <div class="bg-surface rounded-2xl p-4">
-          <div class="text-3xl font-bold text-rate-hard mb-1">${stats.streak_days}</div>
-          <div class="text-sm text-muted">Day Streak</div>
-        </div>
-        <div class="bg-surface rounded-2xl p-4">
-          <div class="text-3xl font-bold text-rate-easy mb-1">${stats.mature_cards}</div>
-          <div class="text-sm text-muted">Mature <span class="text-muted">(${maturePct}%)</span></div>
-        </div>
-      </div>
+      <section class="mt-5 bg-surface rounded-[14px] overflow-hidden">
+        ${rows.map(([label, value], i) => `
+          <div class="pl-4"><div class="flex items-center justify-between min-h-12 pr-4 ${i < rows.length - 1 ? 'border-b border-line' : ''}">
+            <span class="text-[17px] text-ink">${label}</span><span class="text-[17px] text-ink">${value}</span>
+          </div></div>`).join('')}
+      </section>
 
-      <div class="bg-surface rounded-2xl p-4 mb-5">
-        <h2 class="text-sm font-semibold text-muted mb-1">Vocabulary Growth</h2>
-        <p class="text-xs text-muted mb-3">Total words known — last 90 days</p>
-        <div id="growth-chart"></div>
-      </div>
+      <section class="mt-5 bg-surface rounded-[14px] overflow-hidden">
+        <button onclick="navigate('#/recap')" class="w-full min-h-12 px-4 flex items-center justify-between text-[17px] text-ink active:bg-base">This week${ICON.chevronRight}</button>
+      </section>
 
-      <div class="bg-surface rounded-2xl p-4 mb-5">
-        <h2 class="text-sm font-semibold text-muted mb-3">Activity — Last 12 Weeks</h2>
-        <div id="heatmap"></div>
-      </div>
+      ${groupLabel('Reviews · last 7 days')}
+      <section class="bg-surface rounded-[14px] p-4"><div id="weekly-chart"></div></section>
 
-      <div class="bg-surface rounded-2xl p-4 mb-5">
-        <h2 class="text-sm font-semibold text-muted mb-4">Reviews — Last 7 Days</h2>
-        <div id="weekly-chart"></div>
-      </div>
+      ${groupLabel('Activity · last 12 weeks')}
+      <section class="bg-surface rounded-[14px] p-4"><div id="heatmap"></div></section>
 
-      <div class="bg-surface rounded-2xl p-4 mb-5">
-        <h2 class="text-sm font-semibold text-muted mb-3">Appearance</h2>
-        <div class="grid grid-cols-3 gap-2">
-          <button data-theme="light" onclick="setTheme('light')" class="theme-btn h-11 rounded-xl text-sm font-semibold border border-line text-muted transition-colors">Light</button>
-          <button data-theme="dark" onclick="setTheme('dark')" class="theme-btn h-11 rounded-xl text-sm font-semibold border border-line text-muted transition-colors">Dark</button>
-          <button data-theme="system" onclick="setTheme('system')" class="theme-btn h-11 rounded-xl text-sm font-semibold border border-line text-muted transition-colors">By Device</button>
-        </div>
-      </div>
-
-      <div class="bg-surface rounded-2xl p-4">
-        <h2 class="text-sm font-semibold text-muted mb-1">Notifications</h2>
-        <p class="text-xs text-muted mb-3">Add to Home Screen first (iOS 16.4+) — push only works in the installed app.</p>
-        <div class="flex gap-2 mb-3">
-          <button id="push-enable-btn" onclick="enablePush()" class="flex-1 h-12 bg-accent hover:bg-accent-dark active:bg-accent-dark rounded-xl font-semibold text-on-accent transition-colors">Enable</button>
-          <button onclick="sendTestPush()" class="flex-1 h-12 border border-line text-ink hover:bg-base active:bg-line rounded-xl font-semibold transition-colors">Send Test</button>
-        </div>
-        <label class="flex items-center justify-between gap-3">
-          <span class="text-sm text-muted">Daily reminder time</span>
-          <input id="reminder-time" type="time" onchange="saveReminderTime()"
-            class="bg-base border border-line rounded-lg px-3 h-10 text-ink focus:outline-none focus:border-accent" />
-        </label>
-        <label class="flex items-center justify-between gap-3 mt-3">
-          <span class="text-sm text-muted">Nudge me about a deck untouched for</span>
-          <span class="flex items-center gap-2 flex-shrink-0">
-            <input id="silence-days" type="number" min="1" max="365" inputmode="numeric" onchange="saveSilenceDays()"
-              class="w-16 bg-base border border-line rounded-lg px-2 h-10 text-ink text-center focus:outline-none focus:border-accent" />
-            <span class="text-sm text-muted">days</span>
-          </span>
-        </label>
-        <button onclick="sendTestSilence()" class="mt-2 text-xs text-accent hover:text-accent-dark">Test quiet-deck nudge</button>
-        <label class="flex items-center justify-between gap-3 mt-4 pt-4 border-t border-line">
-          <span class="text-sm text-muted">End-of-day email digest</span>
-          <input id="digest-time" type="time" onchange="saveDigestTime()"
-            class="bg-base border border-line rounded-lg px-3 h-10 text-ink focus:outline-none focus:border-accent" />
-        </label>
-        <button onclick="sendTestDigest()" class="mt-2 text-xs text-accent hover:text-accent-dark">Send test email</button>
-        <p id="push-status" class="text-xs text-muted mt-2"></p>
-      </div>
-
-      <p id="app-version" class="text-center text-xs text-muted mt-6 mb-2"></p>
+      ${showGrowth ? `
+        ${groupLabel('Cards added · last 90 days')}
+        <section class="bg-surface rounded-[14px] p-4"><div id="growth-chart"></div></section>` : ''}
     </div>
   `;
 
-  if (growth) renderGrowthChart(growth);
+  if (showGrowth) renderGrowthChart(growth);
   if (heatmap) renderHeatmap(heatmap);
   if (weekly) renderWeeklyChart(weekly);
+}
+
+async function renderSettings(app) {
+  const row = (label, control, last = false, id = '') => `
+    <div class="pl-4"><label ${id ? `for="${id}"` : ''} class="flex items-center justify-between gap-3 min-h-12 pr-4 py-1.5 ${last ? '' : 'border-b border-line'}">
+      <span class="text-[17px] text-ink">${label}</span>${control}
+    </label></div>`;
+  const action = (onclick, label, last = false) => `
+    <div class="pl-4"><button onclick="${onclick}" class="w-full min-h-12 pr-4 text-left text-[17px] text-accent ${last ? '' : 'border-b border-line'} active:opacity-60">${label}</button></div>`;
+  const inputCls = 'h-9 bg-base rounded-lg px-2 text-[17px] text-ink focus:outline-none focus:ring-2 focus:ring-accent/40';
+
+  app.innerHTML = `
+    <div class="px-4 pt-6 pb-10">
+      <h1 class="px-1 text-[34px] leading-[41px] font-bold text-ink font-heading">Settings</h1>
+
+      ${groupLabel('Appearance')}
+      <div class="grid grid-cols-3 p-0.5 rounded-[9px] bg-base" role="radiogroup" aria-label="Appearance">
+        ${[['light', 'Light'], ['dark', 'Dark'], ['system', 'Automatic']].map(([v, l]) => `
+          <button data-theme="${v}" onclick="setTheme('${v}')" role="radio" class="theme-btn h-8 rounded-[7px] text-[13px] font-semibold">${l}</button>`).join('')}
+      </div>
+
+      ${groupLabel('Reminders')}
+      <section class="bg-surface rounded-[14px] overflow-hidden">
+        ${row('Notifications', `<button id="push-enable-btn" onclick="enablePush()" class="h-9 px-3 rounded-lg bg-base text-[15px] font-semibold text-accent disabled:text-muted">Enable</button>`)}
+        ${row('Daily reminder', `<input id="reminder-time" type="time" onchange="saveReminderTime()" class="${inputCls}"/>`, false, 'reminder-time')}
+        ${row('Quiet deck nudge after', `<span class="flex items-center gap-2"><input id="silence-days" type="number" min="1" max="365" inputmode="numeric" onchange="saveSilenceDays()" class="${inputCls} w-16 text-center"/><span class="text-[17px] text-muted">days</span></span>`, true, 'silence-days')}
+      </section>
+      <p class="mt-1.5 px-4 text-[13px] text-muted">Notifications only work in the app added to your Home Screen (iOS 16.4 or later).</p>
+
+      ${groupLabel('Email')}
+      <section class="bg-surface rounded-[14px] overflow-hidden">
+        ${row('End-of-day digest', `<input id="digest-time" type="time" onchange="saveDigestTime()" class="${inputCls}"/>`, true, 'digest-time')}
+      </section>
+
+      ${groupLabel('Test')}
+      <section class="bg-surface rounded-[14px] overflow-hidden">
+        ${action('sendTestPush()', 'Send a test notification')}
+        ${action('sendTestSilence()', 'Send a quiet-deck nudge')}
+        ${action('sendTestDigest()', 'Send a test email', true)}
+      </section>
+      <p id="push-status" role="status" class="mt-1.5 px-4 text-[13px] text-muted min-h-5"></p>
+
+      <p id="app-version" class="mt-8 text-center text-[13px] text-muted"></p>
+    </div>
+  `;
+
+  updateThemeButtons();
   updatePushButton();
   loadReminderTime();
   api('/api/settings/silence').then(s => {
@@ -1651,12 +1602,11 @@ async function renderStats(app) {
     const el = document.getElementById('digest-time');
     if (el && s) el.value = utcToLocalTimeStr(s.hour, s.minute);
   });
-  updateThemeButtons();
   // Server version + cached app files (SW cache); if the cache lags the server, the phone is on stale files.
   Promise.all([api('/api/version'), caches?.keys() ?? []]).then(([v, ks]) => {
     const el = document.getElementById('app-version');
     const c = ks.find(k => k.startsWith('felix-cards-'))?.replace('felix-cards-', '');
-    if (el && v) el.innerHTML = `Felix Cards v${v.version} · ${v.commit}${v.date ? ` · ${v.date}` : ''}${c ? `<br>app files ${c}` : ''}`;
+    if (el && v) el.innerHTML = `Felix Cards ${v.version} · ${v.commit}${v.date ? ` · ${v.date}` : ''}${c ? `<br>app files ${c}` : ''}`;
   });
 }
 
@@ -1897,16 +1847,9 @@ async function renderRecap(app) {
   if (!recap) return;
 
   app.innerHTML = `
-    <div class="p-4 pt-6">
-      <div class="flex items-center gap-2 mb-6">
-        <button onclick="navigate('#/')"
-          class="w-10 h-10 flex items-center justify-center text-muted hover:text-ink transition-colors -ml-2">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-          </svg>
-        </button>
-        <h1 class="text-xl font-bold text-ink font-heading">This Week</h1>
-      </div>
+    <div class="px-4 pt-1 pb-10">
+      <button onclick="navigate('#/stats')" class="h-11 -ml-2 pr-2 flex items-center text-[17px] text-accent active:opacity-60">${ICON.chevronLeft}Progress</button>
+      <h1 class="px-1 mb-6 text-[34px] leading-[41px] font-bold text-ink font-heading">This Week</h1>
 
       <div class="grid grid-cols-2 gap-3 mb-6">
         <div class="bg-surface rounded-2xl p-4 text-center">

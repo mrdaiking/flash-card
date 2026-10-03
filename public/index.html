@@ -122,13 +122,13 @@
       }
       .animate-star-pop { animation: starPop 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
 
-      #new-deck-modal > div, #deck-menu > div, #rename-modal > div, #study-menu > div {
-        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s;
-        transform: translateY(16px);
+      /* Bottom sheets (.sheet, toggled by showModal/hideModalEl): slide up + fade. */
+      .sheet > div {
+        transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s;
+        transform: translateY(24px);
         opacity: 0;
       }
-      #new-deck-modal.modal-open > div, #deck-menu.modal-open > div,
-      #rename-modal.modal-open > div, #study-menu.modal-open > div {
+      .sheet.modal-open > div {
         transform: translateY(0);
         opacity: 1;
       }
@@ -175,7 +175,7 @@
 
   <!-- Bottom Nav -->
   <nav id="bottom-nav" class="hidden fixed bottom-0 left-0 right-0 bg-paper/95 backdrop-blur border-t border-line safe-bottom z-40">
-    <div class="grid grid-cols-2">
+    <div class="grid grid-cols-3">
       <button onclick="navigate('#/')" class="flex flex-col items-center justify-center h-[49px] gap-0.5 text-muted nav-item" data-route="">
         <svg class="w-[26px] h-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="13" height="15" rx="2.5"/><path d="M8 3h9.5A2.5 2.5 0 0 1 20 5.5V17"/></svg>
         <span class="text-[11px] font-medium">Today</span>
@@ -183,6 +183,10 @@
       <button onclick="navigate('#/stats')" class="flex flex-col items-center justify-center h-[49px] gap-0.5 text-muted nav-item" data-route="stats">
         <svg class="w-[26px] h-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
         <span class="text-[11px] font-medium">Progress</span>
+      </button>
+      <button onclick="navigate('#/settings')" class="flex flex-col items-center justify-center h-[49px] gap-0.5 text-muted nav-item" data-route="settings">
+        <svg class="w-[26px] h-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+        <span class="text-[11px] font-medium">Settings</span>
       </button>
     </div>
   </nav>
