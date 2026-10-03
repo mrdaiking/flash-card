@@ -82,7 +82,7 @@ Cập nhật lần cuối: 2026-09-26. Nguồn gốc: doc kiến trúc trên cla
 - Review lúc offline: xếp vào IndexedDB (`felix-cards-sw` / `pending-reviews`) và gỡ thẻ đó khỏi các danh sách due đang cache để không bị ôn lại. Gửi lại khi: Background Sync (chỉ Chrome/Android), **mở app, sự kiện `online`, app quay lại foreground** (đường chính trên iOS vì Safari không có Background Sync), và sau mỗi review online thành công. Single-flight để không gửi trùng.
 - Static asset cache-first, **kể cả script/style CDN** (Tailwind, marked, Google Fonts — response opaque) để mở app lúc đang mất mạng không bị vỡ giao diện.
 - Favorite cũng được queue giống review (request là "đặt = true/false" nên gửi lại an toàn, giữ thứ tự hàng đợi).
-- **Quyết định: không hỗ trợ thêm/sửa thẻ hoặc journal lúc offline** (Felix không dùng kiểu đó). Khi offline, nút lưu báo "Offline — not saved. Tap to retry" và giữ nguyên nội dung đã gõ, thay vì kẹt ở "Saving…". Badge due ở Home khi offline là số của lần online cuối.
+- **Quyết định: không hỗ trợ thêm/sửa thẻ lúc offline** (Felix không dùng kiểu đó). Khi offline, nút lưu báo "Offline — not saved. Tap to retry" và giữ nguyên nội dung đã gõ, thay vì kẹt ở "Saving…". Badge due ở Home khi offline là số của lần online cuối.
 
 ## Notification & re-engagement
 
@@ -120,7 +120,7 @@ Cập nhật lần cuối: 2026-09-26. Nguồn gốc: doc kiến trúc trên cla
 
 - Decks phẳng — đúng tinh thần Domain, không lồng subdeck kiểu Anki.
 - Backend chạy qua Cloudflare Tunnel, PWA gọi qua internet thật, không phải localhost — khớp yêu cầu dùng được lúc đi tàu.
-- Có bảng journal_entries (content + correction dán tay từ ChatGPT + words) — bản thủ công của ý tưởng "capture từ ChatGPT", chưa tự động hoá qua extension.
+- Journal đã bị gỡ khỏi app (2026-10-03, Felix không dùng): bỏ tab, màn hình, API `/api/journal`, và khỏi recap/heatmap. Bảng `journal_entries` vẫn giữ nguyên trong DB để không mất dữ liệu cũ.
 - Push notification không phải lý thuyết — đã có VAPID key, subscribe, gửi thật.
 
 **[Đã build — chưa commit/deploy] Thuật toán đã chuyển sang FSRS-6.** Viết lại từ đầu (patch `fsrs-and-silence-reminder.patch` gốc không có trên máy). `sm2.js` bị xoá, thay bằng `fsrs.js` bọc `ts-fsrs`. Migration một lần khi khởi động, trong 1 transaction: thêm cột `stability, difficulty, reps, lapses, state, last_review`; thẻ đã từng ôn (SM-2 `interval > 0`) được seed S = interval, D suy ngược từ `ease_factor` (cách fsrs-rs làm cho Anki), `reps`/`lapses` đếm từ bảng `reviews`; `next_review` giữ nguyên hoàn toàn. Đã chạy thử trên bản sao DB production (180 thẻ): số thẻ due trước/sau bằng nhau (6 = 6), 0 thẻ đổi `next_review`, chạy lần 2 không làm gì (idempotent). Cột SM-2 cũ vẫn giữ; `interval` tiếp tục được ghi = số ngày hiện tại (stats "mature" dùng). Review offline mang theo `at` (thời điểm ôn thật) để FSRS tính đúng thời gian đã trôi qua.

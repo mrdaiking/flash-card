@@ -75,6 +75,8 @@ if (!cardCols.includes('stability')) {
   })();
 }
 
+// Journal feature removed from the app (Oct 2026); the table stays so no
+// existing entries are lost.
 db.exec(`
   CREATE TABLE IF NOT EXISTS journal_entries (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

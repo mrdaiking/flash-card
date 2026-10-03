@@ -33,7 +33,7 @@ router.get('/stats', (req, res) => {
   res.json({ total_cards, due_today, streak_days, reviewed_today, mature_cards, words_this_week });
 });
 
-// Last-7-day recap: new words, reviews, journal entries.
+// Last-7-day recap: new words and reviews.
 router.get('/recap', (req, res) => {
   const cutoff = "unixepoch('now', '-6 days', 'start of day')";
   const new_words = db.prepare(
@@ -42,15 +42,10 @@ router.get('/recap', (req, res) => {
   const reviews_done = db.prepare(
     `SELECT COUNT(*) as c FROM reviews WHERE reviewed_at >= ${cutoff}`
   ).get().c;
-  const journal_entries = db.prepare(
-    `SELECT id, content, correction, words, created_at FROM journal_entries WHERE created_at >= ${cutoff} ORDER BY created_at DESC`
-  ).all();
   res.json({
     new_words,
     new_word_count: new_words.length,
     reviews_done,
-    journal_entries,
-    journal_count: journal_entries.length,
   });
 });
 
@@ -83,7 +78,7 @@ router.get('/stats/vocab-growth', (req, res) => {
   res.json(result);
 });
 
-// Daily activity (reviews + journal) for a GitHub-style heatmap.
+// Daily review activity for a GitHub-style heatmap.
 router.get('/stats/heatmap', (req, res) => {
   const weeks = Math.min(Number(req.query.weeks) || 12, 53);
   const totalDays = weeks * 7;
@@ -91,13 +86,8 @@ router.get('/stats/heatmap', (req, res) => {
     SELECT date(reviewed_at, 'unixepoch', 'localtime') as day, COUNT(*) as count
     FROM reviews GROUP BY day
   `).all();
-  const journal = db.prepare(`
-    SELECT date(created_at, 'unixepoch', 'localtime') as day, COUNT(*) as count
-    FROM journal_entries GROUP BY day
-  `).all();
   const map = new Map();
   for (const r of reviews) map.set(r.day, (map.get(r.day) || 0) + r.count);
-  for (const j of journal) map.set(j.day, (map.get(j.day) || 0) + j.count);
 
   const result = [];
   for (let i = totalDays - 1; i >= 0; i--) {

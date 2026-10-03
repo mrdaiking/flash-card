@@ -336,15 +336,6 @@ function router() {
     setActiveNav('');
     const params = new URLSearchParams(hash.split('?')[1] || '');
     renderEditCard(app, m[1], params.get('deck'), params.get('ret'));
-  } else if (hash === '#/journal') {
-    setActiveNav('journal');
-    renderJournal(app);
-  } else if ((m = hash.match(/^#\/journal\/new/))) {
-    setActiveNav('journal');
-    renderJournalEntry(app, null);
-  } else if ((m = hash.match(/^#\/journal\/(\d+)\/edit/))) {
-    setActiveNav('journal');
-    renderJournalEntry(app, m[1]);
   } else if (hash === '#/recap') {
     setActiveNav('');
     renderRecap(app);
@@ -413,7 +404,7 @@ async function renderHome(app) {
   const totalDue = decks.reduce((s, d) => s + (d.due_count || 0), 0);
   // Home-screen icon badge; needs notification permission on iOS. ponytail: only refreshed on Home render/push.
   (totalDue ? navigator.setAppBadge?.(totalDue) : navigator.clearAppBadge?.())?.catch(() => {});
-  const hasRecap = recap && (recap.new_word_count || recap.reviews_done || recap.journal_count);
+  const hasRecap = recap && (recap.new_word_count || recap.reviews_done);
 
   app.innerHTML = `
     <div class="p-4 pt-6">
@@ -434,8 +425,7 @@ async function renderHome(app) {
               <p class="text-xs font-semibold text-accent-dark uppercase tracking-wider mb-1">This week</p>
               <p class="text-sm text-ink/80">
                 <span class="font-bold text-ink">${recap.new_word_count}</span> new words ·
-                <span class="font-bold text-ink">${recap.reviews_done}</span> reviews ·
-                <span class="font-bold text-ink">${recap.journal_count}</span> journal
+                <span class="font-bold text-ink">${recap.reviews_done}</span> reviews
               </p>
             </div>
             <svg class="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1938,139 +1928,6 @@ function fmtDate(sec) {
 }
 
 /* ════════════════════════════════════════
-   Screen: Writing Journal
-════════════════════════════════════════ */
-async function renderJournal(app) {
-  loading(app);
-  const entries = await api('/api/journal');
-  if (!entries) return;
-
-  app.innerHTML = `
-    <div class="p-4 pt-6">
-      <div class="flex items-center justify-between mb-1">
-        <h1 class="text-2xl font-bold text-ink font-heading">Journal</h1>
-        <button onclick="navigate('#/journal/new')"
-          class="bg-accent hover:bg-accent-dark text-on-accent px-4 h-10 rounded-xl text-sm font-semibold transition-colors">
-          + New Entry
-        </button>
-      </div>
-      <p class="text-sm text-muted mb-6">Write with your new words. Paste ChatGPT's correction to keep a record.</p>
-
-      ${entries.length === 0 ? `
-        <div class="text-center py-16 text-muted">
-          <div class="text-5xl mb-4">✍️</div>
-          <p class="text-lg font-medium text-muted">No entries yet</p>
-          <p class="text-sm mt-1">Write a few sentences using this week's words</p>
-        </div>` : `
-        <div class="space-y-3">
-          ${entries.map(e => `
-            <div onclick="navigate('#/journal/${e.id}/edit')"
-              class="bg-surface rounded-2xl p-4 cursor-pointer active:scale-[0.99] transition-transform">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-accent uppercase tracking-wider">${fmtDate(e.created_at)}</span>
-                ${e.correction ? '<span class="text-[10px] text-rate-easy bg-rate-easy/10 px-2 py-0.5 rounded-full">corrected</span>' : '<span class="text-[10px] text-muted bg-line/50 px-2 py-0.5 rounded-full">draft</span>'}
-              </div>
-              <p class="text-ink/80 text-sm line-clamp-3 whitespace-pre-wrap break-words">${escHtml(e.content).slice(0, 240)}</p>
-              ${e.words ? `<p class="text-xs text-muted mt-2">words: ${escHtml(e.words)}</p>` : ''}
-            </div>`).join('')}
-        </div>`}
-    </div>
-  `;
-}
-
-async function renderJournalEntry(app, entryId) {
-  loading(app);
-  let entry = null;
-  if (entryId) {
-    entry = await api(`/api/journal/${entryId}`);
-    if (!entry) { navigate('#/journal'); return; }
-  }
-
-  const isNew = !entryId;
-  const content = entry?.content || '';
-  const correction = entry?.correction || '';
-  const words = entry?.words || '';
-
-  app.innerHTML = `
-    <div class="p-4 pt-6">
-      <div class="flex items-center gap-2 mb-6">
-        <button onclick="navigate('#/journal')"
-          class="w-10 h-10 flex items-center justify-center text-muted hover:text-ink transition-colors -ml-2">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-          </svg>
-        </button>
-        <h1 class="text-xl font-bold text-ink flex-1 font-heading">${isNew ? 'New Entry' : 'Edit Entry'}</h1>
-        ${!isNew ? `<button onclick="deleteJournalEntry(${entryId})"
-          class="w-10 h-10 flex items-center justify-center text-muted hover:text-rate-again transition-colors">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-          </svg>
-        </button>` : ''}
-      </div>
-
-      <div class="space-y-5">
-        <div>
-          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">Your writing</label>
-          <textarea id="journal-content" rows="7" placeholder="Write a few sentences using the words you're learning..."
-            class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none">${escHtml(content)}</textarea>
-        </div>
-
-        <div>
-          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">ChatGPT correction <span class="text-muted normal-case font-normal">(optional — paste later)</span></label>
-          <textarea id="journal-correction" rows="7" placeholder="Paste the corrected version + feedback here"
-            class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-rate-easy focus:outline-none focus:border-rate-easy resize-none">${escHtml(correction)}</textarea>
-        </div>
-
-        <div>
-          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">Words practiced <span class="text-muted normal-case font-normal">(optional)</span></label>
-          <input id="journal-words" type="text" value="${escHtml(words)}" placeholder="leverage, iterate, pivot"
-            class="w-full bg-surface border border-line rounded-xl px-4 h-12 text-ink focus:outline-none focus:border-accent"/>
-        </div>
-
-        <div class="flex gap-3 pt-2 pb-4">
-          <button onclick="navigate('#/journal')"
-            class="flex-1 h-12 border border-line rounded-xl text-muted hover:text-ink transition-colors">Cancel</button>
-          <button id="save-journal-btn" onclick="saveJournal(${escHtml(JSON.stringify(entryId || ''))})"
-            class="flex-1 h-12 bg-accent hover:bg-accent-dark rounded-xl text-on-accent font-semibold transition-colors">Save</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-async function saveJournal(entryId) {
-  const content = document.getElementById('journal-content').value.trim();
-  const correction = document.getElementById('journal-correction').value.trim();
-  const words = document.getElementById('journal-words').value.trim();
-  if (!content) { alert('Write something first.'); return; }
-
-  const btn = document.getElementById('save-journal-btn');
-  btn.disabled = true;
-  btn.textContent = 'Saving...';
-
-  const payload = JSON.stringify({ content, correction, words });
-  try {
-    if (entryId) {
-      await api(`/api/journal/${entryId}`, { method: 'PUT', body: payload });
-    } else {
-      await api('/api/journal', { method: 'POST', body: payload });
-    }
-  } catch {
-    btn.disabled = false;
-    btn.textContent = 'Offline — not saved. Tap to retry';
-    return;
-  }
-  navigate('#/journal');
-}
-
-async function deleteJournalEntry(entryId) {
-  if (!confirm('Delete this entry?')) return;
-  await api(`/api/journal/${entryId}`, { method: 'DELETE' });
-  navigate('#/journal');
-}
-
-/* ════════════════════════════════════════
    Screen: This Week recap
 ════════════════════════════════════════ */
 async function renderRecap(app) {
@@ -2090,7 +1947,7 @@ async function renderRecap(app) {
         <h1 class="text-xl font-bold text-ink font-heading">This Week</h1>
       </div>
 
-      <div class="grid grid-cols-3 gap-3 mb-6">
+      <div class="grid grid-cols-2 gap-3 mb-6">
         <div class="bg-surface rounded-2xl p-4 text-center">
           <div class="text-2xl font-bold text-accent">${recap.new_word_count}</div>
           <div class="text-xs text-muted mt-1">New words</div>
@@ -2098,10 +1955,6 @@ async function renderRecap(app) {
         <div class="bg-surface rounded-2xl p-4 text-center">
           <div class="text-2xl font-bold text-rate-easy">${recap.reviews_done}</div>
           <div class="text-xs text-muted mt-1">Reviews</div>
-        </div>
-        <div class="bg-surface rounded-2xl p-4 text-center">
-          <div class="text-2xl font-bold text-rate-hard">${recap.journal_count}</div>
-          <div class="text-xs text-muted mt-1">Journal</div>
         </div>
       </div>
 
@@ -2123,20 +1976,6 @@ async function renderRecap(app) {
           }).join('')}
         </div>`}
 
-      <h2 class="text-sm font-semibold text-muted uppercase tracking-wider mb-3">Journal this week</h2>
-      ${recap.journal_entries.length === 0 ? `
-        <p class="text-muted text-sm">No journal entries this week.</p>` : `
-        <div class="space-y-2">
-          ${recap.journal_entries.map(e => `
-            <div onclick="navigate('#/journal/${e.id}/edit')"
-              class="bg-surface rounded-xl p-3 cursor-pointer active:scale-[0.99] transition-transform">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs text-accent">${fmtDate(e.created_at)}</span>
-                ${e.correction ? '<span class="text-[10px] text-rate-easy">✓ corrected</span>' : ''}
-              </div>
-              <p class="text-ink/80 text-sm line-clamp-2 whitespace-pre-wrap break-words">${escHtml(e.content).slice(0, 160)}</p>
-            </div>`).join('')}
-        </div>`}
     </div>
   `;
 }
