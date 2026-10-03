@@ -9,7 +9,7 @@ router.get('/decks', (req, res) => {
     SELECT d.id, d.name, COALESCE(d.target_retention, ${DEFAULT_RETENTION}) AS target_retention,
       COALESCE(d.front_label, 'Front') AS front_label, COALESCE(d.back_label, 'Back') AS back_label,
       COALESCE(d.example_label, 'Example') AS example_label, COALESCE(d.tts_lang, 'en-US') AS tts_lang,
-      COALESCE(d.font, 'sans') AS font,
+      COALESCE(d.font, 'sans') AS font, COALESCE(d.read_aloud, 1) AS read_aloud,
       COUNT(c.id) as total_count,
       SUM(CASE WHEN c.next_review <= ? THEN 1 ELSE 0 END) as due_count,
       -- due_count split for the Today screen: never-seen cards, cards whose
@@ -29,23 +29,26 @@ router.get('/decks', (req, res) => {
 
 // Template fields are optional; blank/missing falls back to the defaults at read time.
 const label = v => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 40) : null);
-const lang = v => (typeof v === 'string' && /^(off|[a-z]{2,3}(-[A-Za-z]{2,4})?)$/.test(v) ? v : null);
+// tts_lang is the cards' language (also the read-aloud voice); read_aloud turns
+// speech on/off. An old client may still send tts_lang 'off' = speech off.
+const lang = v => (typeof v === 'string' && /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(v) ? v : null);
 const font = v => (v === 'serif' ? 'serif' : null);
+const readAloud = (flag, ttsLang) => (ttsLang === 'off' || flag === false || flag === 0 ? 0 : null);
 
 router.post('/decks', (req, res) => {
-  const { name, front_label, back_label, example_label, tts_lang } = req.body;
+  const { name, front_label, back_label, example_label, tts_lang, read_aloud, font: deckFont } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
   const result = db.prepare(
-    'INSERT INTO decks (name, front_label, back_label, example_label, tts_lang) VALUES (?, ?, ?, ?, ?)'
-  ).run(name, label(front_label), label(back_label), label(example_label), lang(tts_lang));
+    'INSERT INTO decks (name, front_label, back_label, example_label, tts_lang, read_aloud, font) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(name, label(front_label), label(back_label), label(example_label), lang(tts_lang), readAloud(read_aloud, tts_lang), font(deckFont));
   res.status(201).json({ id: result.lastInsertRowid, name });
 });
 
 router.put('/decks/:id/template', (req, res) => {
-  const { front_label, back_label, example_label, tts_lang, font: deckFont } = req.body;
+  const { front_label, back_label, example_label, tts_lang, read_aloud, font: deckFont } = req.body;
   const result = db.prepare(
-    'UPDATE decks SET front_label = ?, back_label = ?, example_label = ?, tts_lang = ?, font = ? WHERE id = ?'
-  ).run(label(front_label), label(back_label), label(example_label), lang(tts_lang), font(deckFont), req.params.id);
+    'UPDATE decks SET front_label = ?, back_label = ?, example_label = ?, tts_lang = ?, read_aloud = ?, font = ? WHERE id = ?'
+  ).run(label(front_label), label(back_label), label(example_label), lang(tts_lang), readAloud(read_aloud, tts_lang), font(deckFont), req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Deck not found' });
   res.json({ id: Number(req.params.id) });
 });

@@ -142,14 +142,15 @@ function previewParts(source) {
   return { imageUrl: m ? m[1] : null, text: stripHtml(md(withoutImg)).trim() };
 }
 
-// Per-deck card template: field labels + speech language ('off' = silent).
+// Per-deck card template: field labels, the cards' language (also the
+// read-aloud voice), read-aloud on/off, and card font.
 // Presets only pre-fill the template form; the deck stores the resulting values.
 const TTS_LANGS = [['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['ja-JP', '日本語'], ['vi-VN', 'Tiếng Việt'],
-  ['zh-CN', '中文'], ['ko-KR', '한국어'], ['fr-FR', 'Français'], ['de-DE', 'Deutsch'], ['es-ES', 'Español'], ['off', 'No speech']];
+  ['zh-CN', '中文'], ['ko-KR', '한국어'], ['fr-FR', 'Français'], ['de-DE', 'Deutsch'], ['es-ES', 'Español']];
 const DECK_PRESETS = {
   blank:      { name: 'Blank',      front_label: 'Front',   back_label: 'Back',        example_label: 'Example',            tts_lang: 'en-US' },
   english:    { name: 'English',    front_label: 'Word',    back_label: 'Meaning',     example_label: 'Example sentence',   tts_lang: 'en-US' },
-  tech:       { name: 'Tech',       front_label: 'Concept', back_label: 'Explanation', example_label: 'Code / use case',    tts_lang: 'off' },
+  tech:       { name: 'Tech',       front_label: 'Concept', back_label: 'Explanation', example_label: 'Code / use case',    tts_lang: 'en-US', read_aloud: false },
   philosophy: { name: 'Philosophy', front_label: 'Term',    back_label: 'Definition',  example_label: 'Quote / thinker',    tts_lang: 'en-US' },
   japanese:   { name: 'Japanese',   front_label: 'Question', back_label: 'Answer',     example_label: 'Rule / reason',      tts_lang: 'ja-JP' },
 };
@@ -164,12 +165,15 @@ const fieldLabel = (text, def) => text && text !== def
 
 // Language + font for card text, from the deck's template. The language comes
 // from its read-aloud setting ('ja-JP' → lang="ja") so the phone draws Japanese
-// kanji shapes (not Chinese ones) and picks the Japanese font; 'off' leaves it
-// unset. font 'serif' = Mincho, for seeing kanji stroke detail.
+// kanji shapes (not Chinese ones) and picks the Japanese font. font 'serif' =
+// Mincho, for seeing kanji stroke detail.
 function cardText(info) {
-  const l = info?.tts_lang && info.tts_lang !== 'off' ? info.tts_lang.split('-')[0] : '';
+  const l = info?.tts_lang ? info.tts_lang.split('-')[0] : '';
   return { attr: l ? ` lang="${l}"` : '', cls: info?.font === 'serif' ? ' card-serif' : '' };
 }
+
+// Voice for a deck, or 'off' when its read-aloud setting is off.
+const speechLang = info => (info?.read_aloud === 0 ? 'off' : info?.tts_lang || 'en-US');
 
 function speak(text, lang = 'en-US') {
   if (!ttsEnabled || lang === 'off' || !window.speechSynthesis) return;
@@ -560,8 +564,11 @@ async function renderHome(app) {
     ${sheetHTML('new-deck-modal', 'New Deck', `
       <input id="new-deck-name" type="text" placeholder="Deck name" class="${fieldCls} h-12"/>
       <label for="new-deck-preset" class="block mt-5 mb-1.5 px-4 text-[13px] text-muted uppercase">Template</label>
-      <select id="new-deck-preset" class="${fieldCls} h-12 appearance-none">${presetOptions()}</select>
-      <p class="mt-1.5 px-4 text-[13px] text-muted">Sets the field names and the language cards are read aloud in. You can change it later.</p>
+      <select id="new-deck-preset" onchange="document.getElementById('new-deck-lang').value = (DECK_PRESETS[this.value] || DEFAULT_DECK).tts_lang"
+        class="${fieldCls} h-12 appearance-none">${presetOptions()}</select>
+      <label for="new-deck-lang" class="block mt-5 mb-1.5 px-4 text-[13px] text-muted uppercase">Card language</label>
+      <select id="new-deck-lang" class="${fieldCls} h-12 appearance-none">${langOptions(DEFAULT_DECK.tts_lang)}</select>
+      <p class="mt-1.5 px-4 text-[13px] text-muted">Picks the voice, the font and Japanese kanji shapes. Change it any time in the deck's ⋯ → Language and font.</p>
     `, { cancel: 'hideNewDeckModal()', save: 'createDeck()', saveLabel: 'Create' })}
   `;
 }
@@ -577,6 +584,7 @@ async function createDeck() {
   const name = document.getElementById('new-deck-name').value.trim();
   if (!name) return;
   const { name: _n, ...template } = DECK_PRESETS[document.getElementById('new-deck-preset').value] || DEFAULT_DECK;
+  template.tts_lang = document.getElementById('new-deck-lang').value;
   await api('/api/decks', { method: 'POST', body: JSON.stringify({ name, ...template }) });
   hideNewDeckModal();
   renderHome(document.getElementById('app'));
@@ -668,7 +676,7 @@ async function renderDeckDetail(app, deckId) {
       <div class="w-full max-w-md px-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 8px)">
         <div class="bg-surface rounded-[14px] overflow-hidden">
           ${menuRow(`navigate('#/decks/${deckId}/import')`, 'Import cards')}
-          ${menuRow('showTemplateModal()', 'Card template and speech')}
+          ${menuRow('showTemplateModal()', 'Language and font')}
           ${menuRow('showRenameModal()', 'Rename deck')}
           <div class="pl-4"><label class="min-h-[60px] pr-4 py-2 flex items-center gap-3 border-b border-line">
             <span class="flex-1">
@@ -685,23 +693,35 @@ async function renderDeckDetail(app, deckId) {
       </div>
     </div>
 
-    ${sheetHTML('template-modal', 'Card template', `
-      <select id="tpl-preset" onchange="applyPreset(this.value)" class="${fieldCls} h-11 appearance-none">
-        <option value="">Start from a preset…</option>${presetOptions()}
-      </select>
+    ${sheetHTML('template-modal', 'Language and font', `
+      <label for="tpl-lang" class="block mb-1.5 px-4 text-[13px] text-muted uppercase">Card language</label>
+      <select id="tpl-lang" class="${fieldCls} h-11 appearance-none">${langOptions(deck.tts_lang)}</select>
+      <p class="mt-1.5 px-4 text-[13px] text-muted">The language on the cards: picks the voice, the font, and Japanese kanji shapes.</p>
+      <div class="mt-4 bg-surface rounded-[10px] overflow-hidden">
+        <div class="pl-4"><label for="tpl-read" class="flex items-center justify-between gap-3 h-11 pr-4 border-b border-line">
+          <span class="text-[17px] text-ink">Read aloud</span>
+          <select id="tpl-read" class="h-8 bg-base rounded-lg px-2 text-[15px] text-ink focus:outline-none">
+            <option value="on"${deck.read_aloud === 0 ? '' : ' selected'}>On</option>
+            <option value="off"${deck.read_aloud === 0 ? ' selected' : ''}>Off</option>
+          </select>
+        </label></div>
+        <div class="pl-4"><label for="tpl-font" class="flex items-center justify-between gap-3 h-11 pr-4">
+          <span class="text-[17px] text-ink">Card font</span>
+          <select id="tpl-font" class="h-8 bg-base rounded-lg px-2 text-[15px] text-ink focus:outline-none">
+            <option value="sans"${deck.font === 'serif' ? '' : ' selected'}>Sans</option>
+            <option value="serif"${deck.font === 'serif' ? ' selected' : ''}>Mincho (serif)</option>
+          </select>
+        </label></div>
+      </div>
+      <p class="mt-1.5 px-4 text-[13px] text-muted">Mincho shows kanji stroke detail; Sans is easier for long sentences.</p>
       ${groupLabel('Field names')}
       <div class="bg-surface rounded-[10px] overflow-hidden">
         ${[['tpl-front', deck.front_label, 'Front'], ['tpl-back', deck.back_label, 'Back'], ['tpl-example', deck.example_label, 'Example']].map(([id, v, ph], i) => `
         <div class="pl-4"><input id="${id}" maxlength="40" value="${escHtml(v)}" placeholder="${ph}" aria-label="${ph} label"
           class="w-full h-11 pr-4 bg-transparent text-[17px] text-ink focus:outline-none ${i < 2 ? 'border-b border-line' : ''}"/></div>`).join('')}
       </div>
-      <label for="tpl-lang" class="block mt-5 mb-1.5 px-4 text-[13px] text-muted uppercase">Read aloud in</label>
-      <select id="tpl-lang" class="${fieldCls} h-11 appearance-none">${langOptions(deck.tts_lang)}</select>
-      <p class="mt-1.5 px-4 text-[13px] text-muted">Also tells the phone which language the cards are in, so Japanese kanji use Japanese shapes.</p>
-      <label for="tpl-font" class="block mt-5 mb-1.5 px-4 text-[13px] text-muted uppercase">Card font</label>
-      <select id="tpl-font" class="${fieldCls} h-11 appearance-none">
-        <option value="sans"${deck.font === 'serif' ? '' : ' selected'}>Sans (default)</option>
-        <option value="serif"${deck.font === 'serif' ? ' selected' : ''}>Serif / Mincho: shows kanji stroke detail</option>
+      <select id="tpl-preset" onchange="applyPreset(this.value)" aria-label="Fill field names from a preset" class="mt-3 ${fieldCls} h-11 appearance-none">
+        <option value="">Fill from a preset…</option>${presetOptions()}
       </select>
     `, { cancel: 'hideTemplateModal()', save: `saveTemplate(${deckId})` })}
 
@@ -728,11 +748,12 @@ function applyPreset(key) {
   document.getElementById('tpl-back').value = p.back_label;
   document.getElementById('tpl-example').value = p.example_label;
   document.getElementById('tpl-lang').value = p.tts_lang;
+  document.getElementById('tpl-read').value = p.read_aloud === false ? 'off' : 'on';
 }
 async function saveTemplate(deckId) {
   const v = id => document.getElementById(id).value.trim();
   await api(`/api/decks/${deckId}/template`, { method: 'PUT', body: JSON.stringify({
-    front_label: v('tpl-front'), back_label: v('tpl-back'), example_label: v('tpl-example'), tts_lang: v('tpl-lang'), font: v('tpl-font'),
+    front_label: v('tpl-front'), back_label: v('tpl-back'), example_label: v('tpl-example'), tts_lang: v('tpl-lang'), read_aloud: v('tpl-read') === 'on', font: v('tpl-font'),
   }) });
   hideTemplateModal();
   renderDeckDetail(document.getElementById('app'), deckId);
@@ -1129,7 +1150,7 @@ function drawStudyCard() {
   const total = cards.length;
   const progress = Math.round((index / total) * 100);
   const info = deckInfo(card.deck_id);
-  const lang = info.tts_lang;
+  const lang = speechLang(info);
   const speech = lang !== 'off';
   const ct = cardText(info);
   const backSpeak = card.example ? `${card.back}. ${card.example}` : card.back;
@@ -1217,7 +1238,7 @@ function flipCard() {
   document.getElementById('reveal-bar')?.classList.add('hidden');
   document.getElementById('rating-btns')?.classList.remove('hidden');
   const c = study.cards[study.index];
-  if (ttsMode === 'both' || ttsMode === 'back') speak(c.example ? `${c.back}. ${c.example}` : c.back, deckInfo(c.deck_id).tts_lang);
+  if (ttsMode === 'both' || ttsMode === 'back') speak(c.example ? `${c.back}. ${c.example}` : c.back, speechLang(deckInfo(c.deck_id)));
 }
 
 /* Small pill showing the card's free-text label (hidden when empty / legacy 'vocab') */

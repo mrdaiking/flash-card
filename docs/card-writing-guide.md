@@ -52,10 +52,10 @@ trì hoãn (việc cần làm),procrastinate,"I procrastinate when a task feels 
 
 ## Importing
 
-1. Set the deck's template first (deck → ⋯ → Card template): field names and
-   the read-aloud language (e.g. Japanese). The language also tags the cards'
-   text, so the phone uses Japanese kanji shapes and font. For kanji decks,
-   "Card font: Serif / Mincho" shows stroke detail the default sans hides.
+1. Set the deck's language first (deck → ⋯ → Language and font): **Card
+   language** picks the read-aloud voice, the font and Japanese kanji shapes;
+   **Read aloud** turns speech on/off without changing the language; **Card
+   font** Mincho shows kanji stroke detail. Field names are set there too.
 2. Deck → ⋯ → Import cards → choose the file or paste → Preview.
 3. Fix flagged rows: red = front or back missing, grey = duplicate (skipped),
    orange = looks like several ideas — consider splitting.

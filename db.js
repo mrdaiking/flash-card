@@ -120,6 +120,13 @@ if (!deckCols.includes('target_retention'))    db.exec(`ALTER TABLE decks ADD CO
 // (NULL = 'sans'; 'serif' = Mincho/serif for studying kanji stroke detail).
 for (const col of ['front_label', 'back_label', 'example_label', 'tts_lang', 'font'])
   if (!deckCols.includes(col)) db.exec(`ALTER TABLE decks ADD COLUMN ${col} TEXT`);
+// Read-aloud on/off, separate from the cards' language (NULL/1 = on). Decks that
+// used tts_lang = 'off' for "no speech" move to read_aloud = 0 with the
+// language unset, once, in the same transaction as the new column.
+if (!deckCols.includes('read_aloud')) db.transaction(() => {
+  db.exec('ALTER TABLE decks ADD COLUMN read_aloud INTEGER');
+  db.exec("UPDATE decks SET read_aloud = 0, tts_lang = NULL WHERE tts_lang = 'off'");
+})();
 const settingCols = db.prepare(`PRAGMA table_info(settings)`).all().map(c => c.name);
 if (!settingCols.includes('silence_threshold_days')) db.exec(`ALTER TABLE settings ADD COLUMN silence_threshold_days INTEGER NOT NULL DEFAULT 21`);
 if (!settingCols.includes('renotify_days'))          db.exec(`ALTER TABLE settings ADD COLUMN renotify_days INTEGER NOT NULL DEFAULT 14`);
