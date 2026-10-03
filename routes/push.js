@@ -46,7 +46,7 @@ async function broadcastPush(payload) {
 }
 
 router.post('/push/test', async (req, res) => {
-  res.json(await broadcastPush({ title: 'Felix Cards', body: 'Test notification 🔔' }));
+  res.json(await broadcastPush({ title: 'Felix Cards', body: 'Test notification' }));
 });
 
 router.get('/settings/reminder', (req, res) => {

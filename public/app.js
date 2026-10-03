@@ -1,6 +1,6 @@
 /* ── Theme (Light / Dark / System) ── */
 const THEME_KEY = 'fc_theme';
-const THEME_COLORS = { light: '#C2410C', dark: '#E2662E' };
+const THEME_COLORS = { light: '#F6F4F0', dark: '#121110' }; // status bar = page ground
 
 function getThemePref() {
   return localStorage.getItem(THEME_KEY) || 'system';
@@ -163,7 +163,7 @@ const presetOptions = () => Object.entries(DECK_PRESETS).map(([k, v]) => `<optio
 const langOptions = sel => TTS_LANGS.map(([v, l]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${l}</option>`).join('');
 // Small field caption on study cards, only once a deck's labels were customised.
 const fieldLabel = (text, def) => text && text !== def
-  ? `<p class="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">${escHtml(text)}</p>` : '';
+  ? `<p class="text-[11px] font-semibold uppercase text-muted mb-2">${escHtml(text)}</p>` : '';
 
 function speak(text, lang = 'en-US') {
   if (!ttsEnabled || lang === 'off' || !window.speechSynthesis) return;
@@ -409,7 +409,7 @@ async function renderHome(app) {
   app.innerHTML = `
     <div class="p-4 pt-6">
       <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold text-ink font-heading">My Decks</h1>
+        <h1 class="text-[34px] leading-[41px] font-bold text-ink font-heading">Decks</h1>
         ${totalDue > 0 ? `
           <button onclick="navigate('#/study/all')"
             class="bg-accent hover:bg-accent-dark text-on-accent px-4 h-10 rounded-xl text-sm font-semibold transition-colors">
@@ -422,7 +422,7 @@ async function renderHome(app) {
           class="bg-gradient-to-r from-accent/15 to-accent/5 border border-accent/30 rounded-2xl p-4 mb-5 cursor-pointer active:scale-[0.99] transition-transform">
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-xs font-semibold text-accent-dark uppercase tracking-wider mb-1">This week</p>
+              <p class="text-xs font-semibold text-accent-dark uppercase mb-1">This week</p>
               <p class="text-sm text-ink/80">
                 <span class="font-bold text-ink">${recap.new_word_count}</span> new words ·
                 <span class="font-bold text-ink">${recap.reviews_done}</span> reviews
@@ -436,7 +436,6 @@ async function renderHome(app) {
 
       ${decks.length === 0 ? `
         <div class="text-center py-20 text-muted">
-          <div class="text-5xl mb-4">📚</div>
           <p class="text-lg font-medium text-muted">No decks yet</p>
           <p class="text-sm mt-1">Tap + to create your first deck</p>
         </div>` : `
@@ -473,7 +472,7 @@ async function renderHome(app) {
         <h2 class="text-lg font-semibold text-ink mb-4 font-heading">New Deck</h2>
         <input id="new-deck-name" type="text" placeholder="Deck name"
           class="w-full bg-base border border-line rounded-xl px-4 h-12 text-ink focus:outline-none focus:border-accent mb-3"/>
-        <label class="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">Template</label>
+        <label class="block text-xs font-semibold text-muted uppercase mb-1">Template</label>
         <select id="new-deck-preset"
           class="w-full h-12 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent mb-4">${presetOptions()}</select>
         <div class="flex gap-3">
@@ -540,7 +539,6 @@ async function renderDeckDetail(app, deckId) {
 
       ${cards.length === 0 ? `
         <div class="text-center py-14 text-muted">
-          <div class="text-4xl mb-3">🃏</div>
           <p class="font-medium text-muted">No cards yet</p>
           <p class="text-sm mt-1">Add cards or use Import</p>
         </div>` : `
@@ -553,8 +551,8 @@ async function renderDeckDetail(app, deckId) {
             <div class="bg-surface rounded-xl p-4 flex items-center gap-3">
               ${thumb ? `<img src="${escHtml(thumb)}" loading="lazy" class="w-11 h-11 rounded-lg object-cover flex-shrink-0">` : ''}
               <div class="flex-1 min-w-0">
-                <p class="text-ink truncate text-sm font-medium">${escHtml(front.text || (front.imageUrl ? '🖼 Image' : ''))}</p>
-                <p class="text-muted text-xs truncate mt-0.5">${escHtml(back.text || (back.imageUrl ? '🖼 Image' : ''))}</p>
+                <p class="text-ink truncate text-sm font-medium">${escHtml(front.text || (front.imageUrl ? 'Image' : ''))}</p>
+                <p class="text-muted text-xs truncate mt-0.5">${escHtml(back.text || (back.imageUrl ? 'Image' : ''))}</p>
               </div>
               <div class="flex gap-1 flex-shrink-0">
                 <button id="fav-btn-${c.id}" data-fav="${c.is_favorite ? '1' : '0'}" onclick="toggleFavoriteInList(${c.id}, 'fav-btn-${c.id}')"
@@ -683,7 +681,7 @@ async function renderDeckDetail(app, deckId) {
             class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
           <input id="tpl-example" maxlength="40" value="${escHtml(deck.example_label)}" placeholder="Example label"
             class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
-          <label class="block text-xs font-semibold text-muted uppercase tracking-wider pt-1">Speech language</label>
+          <label class="block text-xs font-semibold text-muted uppercase pt-1">Speech language</label>
           <select id="tpl-lang"
             class="w-full h-11 bg-base border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent">${langOptions(deck.tts_lang)}</select>
         </div>
@@ -925,13 +923,13 @@ function impRender() {
     Array.from({ length: imp.width }, (_, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${escHtml(label(i))}</option>`).join('');
   const select = (field, optional) => `
     <label class="block">
-      <span class="text-xs font-semibold text-muted uppercase tracking-wider">${field}${optional ? ' (optional)' : ''}</span>
+      <span class="text-xs font-semibold text-muted uppercase">${field}${optional ? ' (optional)' : ''}</span>
       <select onchange="imp.map.${field} = +this.value; impBuildRows(); impRender()"
         class="mt-1 w-full h-11 bg-surface border border-line rounded-xl px-3 text-ink text-sm focus:outline-none focus:border-accent">${options(imp.map[field], optional)}</select>
     </label>`;
 
   document.getElementById('imp-body').innerHTML = `
-    <h2 class="text-sm font-semibold text-muted uppercase tracking-wider mb-3">Columns</h2>
+    <h2 class="text-sm font-semibold text-muted uppercase mb-3">Columns</h2>
     <label class="flex items-center gap-2 text-sm text-ink mb-3">
       <input type="checkbox" class="w-4 h-4 accent-accent" ${imp.header ? 'checked' : ''} onchange="imp.header = this.checked; impBuildRows(); impRender()">
       First row is a header
@@ -954,7 +952,7 @@ function impRenderReview() {
 
   document.getElementById('imp-review').innerHTML = `
     <div class="flex items-center justify-between mb-3">
-      <h2 class="text-sm font-semibold text-muted uppercase tracking-wider">Review · ${ready} of ${rows.length}</h2>
+      <h2 class="text-sm font-semibold text-muted uppercase">Review · ${ready} of ${rows.length}</h2>
       <label class="flex items-center gap-2 text-xs text-muted">
         <input type="checkbox" class="accent-accent" ${imp.onlyFlagged ? 'checked' : ''} onchange="imp.onlyFlagged = this.checked; impRenderReview()">
         Flagged only
@@ -988,7 +986,7 @@ function impRenderReview() {
         </div>`).join('')}
     </div>
 
-    <h2 class="text-sm font-semibold text-muted uppercase tracking-wider mb-2">Pacing</h2>
+    <h2 class="text-sm font-semibold text-muted uppercase mb-2">Pacing</h2>
     <select onchange="imp.spreadDays = +this.value; impRenderReview()"
       class="w-full h-11 bg-surface border border-line rounded-xl px-3 text-ink text-sm focus:outline-none focus:border-accent">
       ${SPREAD_OPTIONS.map(([d, l]) => `<option value="${d}"${d === imp.spreadDays ? ' selected' : ''}>${l}</option>`).join('')}
@@ -1041,9 +1039,8 @@ async function renderStudy(app, deckId, favoritesOnly = false, startId = null) {
   if (cards.length === 0) {
     app.innerHTML = `
       <div class="flex flex-col items-center justify-center min-h-[70vh] p-8 text-center">
-        <div class="text-6xl mb-4">${favoritesOnly ? '⭐' : '🎉'}</div>
-        <h2 class="text-2xl font-bold text-ink mb-2 font-heading">${favoritesOnly ? 'No favorites yet' : 'All caught up!'}</h2>
-        <p class="text-muted mb-8">${favoritesOnly ? 'Star a card to add it here.' : 'No cards due right now.'}</p>
+        <h2 class="text-[28px] leading-[34px] font-bold text-ink mb-2 font-heading">${favoritesOnly ? 'No favorites yet' : 'Nothing due right now'}</h2>
+        <p class="text-muted mb-8">${favoritesOnly ? 'Star a card while studying to collect it here.' : 'Cards come back when they\u2019re due. Check back later.'}</p>
         <button onclick="leaveStudy('#/')"
           class="h-12 px-8 bg-accent hover:bg-accent-dark rounded-xl text-on-accent font-semibold transition-colors">
           Back to Decks
@@ -1111,8 +1108,8 @@ function drawStudyCard() {
     const total = cards.filter(c => !c.practice).length;
     app.innerHTML = `
       <div class="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center">
-        <div class="text-6xl mb-4">✅</div>
-        <h2 class="text-2xl font-bold text-ink mb-1 font-heading">Session Complete!</h2>
+        <svg class="w-14 h-14 mb-4 text-rate-easy" viewBox="0 0 56 56" fill="none" aria-hidden="true"><circle cx="28" cy="28" r="27" stroke="currentColor" stroke-width="2"/><path d="M17 29l7.5 7.5L40 21" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <h2 class="text-[28px] leading-[34px] font-bold text-ink mb-1 font-heading">Done for now</h2>
         <p class="text-muted mb-8">Reviewed ${total} card${total !== 1 ? 's' : ''}</p>
         <div class="grid grid-cols-2 gap-3 w-full max-w-xs mb-8">
           <div class="bg-rate-again/10 border border-rate-again/30 rounded-xl p-3">
@@ -1268,7 +1265,7 @@ function flipCard() {
 function typeBadge(type) {
   if (!type || type === 'vocab') return '';
   const text = { phrasal: 'Phrasal verb' }[type] || type; // legacy keys
-  return `<span class="inline-block bg-accent/15 text-accent-dark text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full">${escHtml(text)}</span>`;
+  return `<span class="inline-block bg-accent/15 text-accent-dark text-[11px] font-semibold uppercase px-2 py-0.5 rounded-full">${escHtml(text)}</span>`;
 }
 
 // Fire a study-screen write (review or favorite) without blocking the UI,
@@ -1461,7 +1458,7 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
 
       <div class="space-y-5">
         <div>
-          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">${escHtml(info.front_label)}</label>
+          <label class="text-xs font-semibold text-muted uppercase mb-2 block">${escHtml(info.front_label)}</label>
           <textarea id="edit-front" rows="4" placeholder="${escHtml(info.front_label)}..."
             class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none">${escHtml(front)}</textarea>
           <button type="button" id="image-btn-edit-front" onclick="pickImageFor('edit-front')" class="mt-2 text-xs text-accent hover:text-accent-dark">+ Add image</button>
@@ -1471,7 +1468,7 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
         </div>
 
         <div>
-          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">${escHtml(info.back_label)}</label>
+          <label class="text-xs font-semibold text-muted uppercase mb-2 block">${escHtml(info.back_label)}</label>
           <textarea id="edit-back" rows="4" placeholder="${escHtml(info.back_label)}..."
             class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none">${escHtml(back)}</textarea>
           <button type="button" id="image-btn-edit-back" onclick="pickImageFor('edit-back')" class="mt-2 text-xs text-accent hover:text-accent-dark">+ Add image</button>
@@ -1481,7 +1478,7 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
         </div>
 
         <div>
-          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">${escHtml(info.example_label)}</label>
+          <label class="text-xs font-semibold text-muted uppercase mb-2 block">${escHtml(info.example_label)}</label>
           <textarea id="edit-example" rows="2" placeholder="${escHtml(info.example_label)} (optional)"
             class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-accent resize-none">${escHtml(example)}</textarea>
           <button type="button" id="image-btn-edit-example" onclick="pickImageFor('edit-example')" class="mt-2 text-xs text-accent hover:text-accent-dark">+ Add image</button>
@@ -1493,7 +1490,7 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
         <input type="file" id="image-picker" accept="image/*" class="hidden" />
 
         <div>
-          <label class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 block">Label (optional)</label>
+          <label class="text-xs font-semibold text-muted uppercase mb-2 block">Label (optional)</label>
           <input id="edit-type" list="edit-type-list" maxlength="30" value="${escHtml(cardType === 'vocab' ? '' : cardType)}" placeholder="e.g. Idiom, Pattern, Rule"
             class="w-full h-12 bg-surface border border-line rounded-xl px-4 text-ink focus:outline-none focus:border-accent"/>
           ${typeDatalist('edit-type-list', siblings)}
@@ -1586,7 +1583,7 @@ async function renderStats(app) {
 
   app.innerHTML = `
     <div class="p-4 pt-6">
-      <h1 class="text-2xl font-bold text-ink mb-6 font-heading">Statistics</h1>
+      <h1 class="text-[34px] leading-[41px] font-bold text-ink mb-6 font-heading">Statistics</h1>
 
       <div class="grid grid-cols-2 gap-3 mb-5">
         <div class="bg-surface rounded-2xl p-4">
@@ -1598,7 +1595,7 @@ async function renderStats(app) {
           <div class="text-sm text-muted">Total Words</div>
         </div>
         <div class="bg-surface rounded-2xl p-4">
-          <div class="text-3xl font-bold text-rate-hard mb-1">${stats.streak_days} 🔥</div>
+          <div class="text-3xl font-bold text-rate-hard mb-1">${stats.streak_days}</div>
           <div class="text-sm text-muted">Day Streak</div>
         </div>
         <div class="bg-surface rounded-2xl p-4">
@@ -1727,18 +1724,7 @@ function urlBase64ToUint8Array(base64) {
 
 async function updatePushButton() {
   const btn = document.getElementById('push-enable-btn');
-  const status = document.getElementById('push-status');
   if (!btn) return;
-
-  const diag = [
-    `standalone=${window.navigator.standalone ?? matchMedia('(display-mode: standalone)').matches}`,
-    `serviceWorker=${'serviceWorker' in navigator}`,
-    `PushManager=${'PushManager' in window}`,
-    `Notification=${'Notification' in window}`,
-    `permission=${window.Notification?.permission ?? 'n/a'}`,
-  ].join(' ');
-  if (status) status.textContent = diag;
-
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     btn.textContent = 'Not supported';
     btn.disabled = true;
@@ -1746,7 +1732,7 @@ async function updatePushButton() {
   }
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
-  btn.textContent = sub ? 'Enabled ✓' : 'Enable';
+  btn.textContent = sub ? 'Enabled' : 'Enable';
 }
 
 async function enablePush() {
@@ -1958,7 +1944,7 @@ async function renderRecap(app) {
         </div>
       </div>
 
-      <h2 class="text-sm font-semibold text-muted uppercase tracking-wider mb-3">New words this week</h2>
+      <h2 class="text-sm font-semibold text-muted uppercase mb-3">New words this week</h2>
       ${recap.new_words.length === 0 ? `
         <p class="text-muted text-sm mb-6">No new words added this week.</p>` : `
         <div class="space-y-2 mb-6">
@@ -1967,7 +1953,7 @@ async function renderRecap(app) {
             return `
             <div class="bg-surface rounded-xl p-3 flex items-center gap-3">
               ${p.imageUrl ? `<img src="${escHtml(p.imageUrl)}" loading="lazy" class="w-11 h-11 rounded-lg object-cover flex-shrink-0">` : ''}
-              <span class="text-ink text-sm font-medium truncate flex-1 min-w-0">${escHtml(p.text || (p.imageUrl ? '' : '🖼 Image'))}</span>
+              <span class="text-ink text-sm font-medium truncate flex-1 min-w-0">${escHtml(p.text || (p.imageUrl ? '' : 'Image'))}</span>
               <div class="flex items-center gap-2 flex-shrink-0">
                 ${typeBadge(w.type)}
                 <span class="text-xs text-muted">${fmtDate(w.created_at)}</span>

@@ -3,15 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#C2410C">
+  <meta name="theme-color" content="#F6F4F0">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="FlashCards">
+  <meta name="apple-mobile-web-app-title" content="Felix Cards">
   <title>Felix Cards</title>
   <link rel="manifest" href="/manifest.json">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Raleway:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
   <script>
     // Applied before first paint to avoid a flash of the wrong theme.
     (function () {
@@ -41,50 +40,62 @@
             'rate-good': 'rgb(var(--color-rate-good) / <alpha-value>)',
             'rate-easy': 'rgb(var(--color-rate-easy) / <alpha-value>)',
           },
+          // System font (SF Pro on Apple devices): what the apps next to it use.
           fontFamily: {
-            sans: ['Raleway', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-            heading: ['Lora', 'ui-serif', 'serif'],
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Text"', '"Segoe UI"', 'system-ui', '"Hiragino Sans"', 'sans-serif'],
+            heading: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Display"', '"Segoe UI"', 'system-ui', 'sans-serif'],
           },
         }
       }
     }
   </script>
   <style>
+    /* Design tokens (redesign 2026-10). Every text/background pair used in the
+       app meets WCAG AA 4.5:1. paper = page ground, surface = grouped list /
+       card, base = inputs and secondary fills. In dark mode the accent is light,
+       so text on it (on-accent) is dark. */
     :root {
-      --color-paper: 255 251 235;
+      --color-paper: 246 244 240;
       --color-surface: 255 255 255;
-      --color-base: 242 230 226;
-      --color-ink: 61 42 31;
-      --color-muted: 138 117 101;
-      --color-line: 232 220 201;
-      --color-accent: 194 65 12;
-      --color-accent-dark: 154 52 18;
-      --color-accent-tint: 242 230 226;
-      --color-accent-soft: 232 180 154;
+      --color-base: 237 232 224;
+      --color-ink: 29 27 24;
+      --color-muted: 106 100 91;
+      --color-line: 227 222 213;
+      --color-accent: 166 63 22;
+      --color-accent-dark: 126 47 16;
+      --color-accent-tint: 251 228 221;
+      --color-accent-soft: 240 162 126;
       --color-on-accent: 255 255 255;
-      --color-rate-again: 220 38 38;
-      --color-rate-hard: 217 119 6;
-      --color-rate-good: 161 98 7;
-      --color-rate-easy: 5 150 105;
+      --color-rate-again: 180 35 24;
+      --color-rate-hard: 168 83 0;
+      --color-rate-good: 47 98 192;
+      --color-rate-easy: 29 115 71;
     }
     :root.dark {
-      --color-paper: 27 20 15;
-      --color-surface: 42 32 25;
-      --color-base: 20 15 11;
-      --color-ink: 242 231 218;
-      --color-muted: 168 148 132;
-      --color-line: 61 47 36;
-      --color-accent: 226 102 46;
-      --color-accent-dark: 194 65 12;
-      --color-accent-tint: 61 35 19;
-      --color-accent-soft: 107 61 35;
-      --color-on-accent: 255 255 255;
-      --color-rate-again: 239 83 80;
-      --color-rate-hard: 245 166 35;
-      --color-rate-good: 234 179 8;
-      --color-rate-easy: 52 211 153;
+      --color-paper: 18 17 16;
+      --color-surface: 30 28 26;
+      --color-base: 42 39 36;
+      --color-ink: 242 238 232;
+      --color-muted: 163 156 146;
+      --color-line: 52 48 44;
+      --color-accent: 232 135 92;
+      --color-accent-dark: 240 162 126;
+      --color-accent-tint: 58 36 26;
+      --color-accent-soft: 110 62 40;
+      --color-on-accent: 29 27 24;
+      --color-rate-again: 240 122 106;
+      --color-rate-hard: 233 162 59;
+      --color-rate-good: 127 166 240;
+      --color-rate-easy: 91 192 138;
     }
-    body { background-color: rgb(var(--color-paper)); -webkit-tap-highlight-color: transparent; }
+    body {
+      background-color: rgb(var(--color-paper));
+      -webkit-tap-highlight-color: transparent;
+      -webkit-font-smoothing: antialiased;
+      font-variant-numeric: tabular-nums;
+      font-size: 17px; /* iOS body size */
+    }
+    h1, h2, h3 { letter-spacing: -0.01em; }
     .card-scene { perspective: 1000px; }
     .card-inner {
       transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
@@ -148,18 +159,16 @@
 
   <!-- Auth Screen -->
   <div id="auth-screen" class="hidden fixed inset-0 bg-paper flex items-center justify-center z-50 p-4">
-    <div class="bg-surface rounded-2xl p-8 w-full max-w-sm shadow-lg shadow-ink/10">
+    <div class="w-full max-w-sm px-4">
       <div class="text-center mb-8">
-        <div class="w-16 h-16 bg-paper rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <svg width="46" height="46" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
-            <rect x="20" y="12" width="56" height="76" rx="10" style="fill:rgb(var(--color-line))"/>
-            <rect x="26" y="18" width="56" height="76" rx="10" style="fill:rgb(var(--color-base))"/>
-            <rect x="32" y="24" width="56" height="76" rx="10" style="fill:rgb(var(--color-accent))"/>
-            <path d="M 70 24 L 88 24 L 88 42 Z" style="fill:rgb(var(--color-on-accent))" opacity="0.92"/>
-            <text x="60" y="76" font-family="Lora, Georgia, serif" font-size="34" font-weight="700" text-anchor="middle" style="fill:rgb(var(--color-on-accent))">F</text>
-          </svg>
-        </div>
-        <h1 class="text-2xl font-bold text-ink font-heading">Felix Cards</h1>
+        <!-- App mark ("spaced dots"), same drawing as scripts/generate-icons.js -->
+        <svg class="mx-auto mb-5" width="72" height="72" viewBox="0 0 1024 1024" aria-hidden="true">
+          <rect width="1024" height="1024" rx="228" fill="#B5451A"/>
+          <path d="M232 744 C 380 712, 560 600, 792 300" fill="none" stroke="#fff" stroke-opacity="0.28" stroke-width="18" stroke-linecap="round"/>
+          <circle cx="232" cy="744" r="52" fill="#fff"/><circle cx="356" cy="712" r="52" fill="#fff"/>
+          <circle cx="528" cy="616" r="52" fill="#fff"/><circle cx="792" cy="300" r="64" fill="#fff"/>
+        </svg>
+        <h1 class="text-[28px] leading-[34px] font-bold text-ink font-heading">Felix Cards</h1>
         <p class="text-muted mt-1 text-sm">Enter your PIN to continue</p>
       </div>
       <input
@@ -179,7 +188,7 @@
   </div>
 
   <!-- Network status banner (driven by setNet() in app.js) -->
-  <div id="net-banner" role="status" class="hidden fixed top-0 left-0 right-0 z-[60] text-center text-sm font-semibold text-white px-4 pb-2" style="padding-top: calc(env(safe-area-inset-top) + 0.5rem)"></div>
+  <div id="net-banner" role="status" class="hidden fixed top-0 left-0 right-0 z-[60] text-center text-sm font-semibold text-paper px-4 pb-2" style="padding-top: calc(env(safe-area-inset-top) + 0.5rem)"></div>
 
   <!-- App -->
   <div id="app" class="pb-20 min-h-screen safe-top"></div>
