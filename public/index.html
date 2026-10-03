@@ -106,6 +106,11 @@
     .prose-content code { font-size: 0.85em; background: rgb(var(--color-base)); padding: 0.1em 0.3em; border-radius: 0.25rem; }
     .prose-content pre code { background: transparent; padding: 0; }
     .prose-content p { margin: 0.25rem 0; }
+    /* Card text: Japanese needs more leading than Latin/Vietnamese at large sizes
+       (lang comes from the deck's read-aloud language, see cardText() in app.js). */
+    .card-text:lang(ja) { line-height: 1.7; letter-spacing: 0.02em; }
+    /* Per-deck "Serif / Mincho" card font. */
+    .card-serif { font-family: "Hiragino Mincho ProN", "Hiragino Mincho Pro", "Yu Mincho", YuMincho, "Noto Serif JP", "Noto Serif", ui-serif, Georgia, serif; }
 
     /* Motion — all gated behind prefers-reduced-motion so it's opt-out, not forced. */
     @media (prefers-reduced-motion: no-preference) {

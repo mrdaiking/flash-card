@@ -162,6 +162,15 @@ const langOptions = sel => TTS_LANGS.map(([v, l]) => `<option value="${v}"${v ==
 const fieldLabel = (text, def) => text && text !== def
   ? `<p class="text-[11px] font-semibold uppercase text-muted mb-2">${escHtml(text)}</p>` : '';
 
+// Language + font for card text, from the deck's template. The language comes
+// from its read-aloud setting ('ja-JP' → lang="ja") so the phone draws Japanese
+// kanji shapes (not Chinese ones) and picks the Japanese font; 'off' leaves it
+// unset. font 'serif' = Mincho, for seeing kanji stroke detail.
+function cardText(info) {
+  const l = info?.tts_lang && info.tts_lang !== 'off' ? info.tts_lang.split('-')[0] : '';
+  return { attr: l ? ` lang="${l}"` : '', cls: info?.font === 'serif' ? ' card-serif' : '' };
+}
+
 function speak(text, lang = 'en-US') {
   if (!ttsEnabled || lang === 'off' || !window.speechSynthesis) return;
   window.speechSynthesis.cancel();
@@ -587,6 +596,7 @@ async function renderDeckDetail(app, deckId) {
   const dueCount = cards.filter(c => c.next_review <= Date.now()).length;
   const favoriteCount = cards.filter(c => c.is_favorite).length;
   const typeList = typeDatalist('type-list', cards);
+  const ct = cardText(deck);
   const menuRow = (onclick, label, cls = 'text-ink', last = false) => `
     <div class="pl-4"><button onclick="${onclick}" class="w-full min-h-[52px] pr-4 flex items-center text-left text-[17px] ${cls} ${last ? '' : 'border-b border-line'} active:opacity-60">${label}</button></div>`;
 
@@ -619,7 +629,7 @@ async function renderDeckDetail(app, deckId) {
             <div class="pl-4"><div class="flex items-center min-h-[60px] ${i < cards.length - 1 ? 'border-b border-line' : ''}">
               <button onclick="navigate('#/cards/${c.id}/edit?deck=${deckId}')" class="flex-1 min-w-0 flex items-center gap-3 py-2 text-left active:opacity-60">
                 ${thumb ? `<img src="${escHtml(thumb)}" alt="" loading="lazy" class="w-10 h-10 rounded-lg object-cover flex-shrink-0">` : ''}
-                <span class="min-w-0">
+                <span class="min-w-0"${ct.attr}>
                   <span class="block truncate text-[17px] leading-[22px] text-ink">${escHtml(front.text || (front.imageUrl ? 'Image' : ''))}</span>
                   <span class="block truncate text-[15px] leading-5 text-muted">${escHtml(back.text || (back.imageUrl ? 'Image' : ''))}</span>
                 </span>
@@ -645,9 +655,9 @@ async function renderDeckDetail(app, deckId) {
 
     ${sheetHTML('quick-add', `Add card <span id="qa-count" class="text-[15px] font-normal text-muted"></span>`, `
       <div class="space-y-2">
-        <textarea id="qa-front" rows="2" placeholder="${escHtml(deck.front_label)}" class="${fieldCls} py-3 resize-none"></textarea>
-        <textarea id="qa-back" rows="2" placeholder="${escHtml(deck.back_label)}" class="${fieldCls} py-3 resize-none"></textarea>
-        <textarea id="qa-example" rows="1" placeholder="${escHtml(deck.example_label)} (optional)" class="${fieldCls} py-3 resize-none"></textarea>
+        <textarea id="qa-front"${ct.attr} rows="2" placeholder="${escHtml(deck.front_label)}" class="${fieldCls} py-3 resize-none"></textarea>
+        <textarea id="qa-back"${ct.attr} rows="2" placeholder="${escHtml(deck.back_label)}" class="${fieldCls} py-3 resize-none"></textarea>
+        <textarea id="qa-example"${ct.attr} rows="1" placeholder="${escHtml(deck.example_label)} (optional)" class="${fieldCls} py-3 resize-none"></textarea>
         <input id="qa-type" list="type-list" maxlength="30" placeholder="Label (optional)" class="${fieldCls} h-11"/>
         ${typeList}
       </div>
@@ -687,6 +697,12 @@ async function renderDeckDetail(app, deckId) {
       </div>
       <label for="tpl-lang" class="block mt-5 mb-1.5 px-4 text-[13px] text-muted uppercase">Read aloud in</label>
       <select id="tpl-lang" class="${fieldCls} h-11 appearance-none">${langOptions(deck.tts_lang)}</select>
+      <p class="mt-1.5 px-4 text-[13px] text-muted">Also tells the phone which language the cards are in, so Japanese kanji use Japanese shapes.</p>
+      <label for="tpl-font" class="block mt-5 mb-1.5 px-4 text-[13px] text-muted uppercase">Card font</label>
+      <select id="tpl-font" class="${fieldCls} h-11 appearance-none">
+        <option value="sans"${deck.font === 'serif' ? '' : ' selected'}>Sans (default)</option>
+        <option value="serif"${deck.font === 'serif' ? ' selected' : ''}>Serif / Mincho: shows kanji stroke detail</option>
+      </select>
     `, { cancel: 'hideTemplateModal()', save: `saveTemplate(${deckId})` })}
 
     ${sheetHTML('rename-modal', 'Rename Deck', `
@@ -716,7 +732,7 @@ function applyPreset(key) {
 async function saveTemplate(deckId) {
   const v = id => document.getElementById(id).value.trim();
   await api(`/api/decks/${deckId}/template`, { method: 'PUT', body: JSON.stringify({
-    front_label: v('tpl-front'), back_label: v('tpl-back'), example_label: v('tpl-example'), tts_lang: v('tpl-lang'),
+    front_label: v('tpl-front'), back_label: v('tpl-back'), example_label: v('tpl-example'), tts_lang: v('tpl-lang'), font: v('tpl-font'),
   }) });
   hideTemplateModal();
   renderDeckDetail(document.getElementById('app'), deckId);
@@ -1115,6 +1131,7 @@ function drawStudyCard() {
   const info = deckInfo(card.deck_id);
   const lang = info.tts_lang;
   const speech = lang !== 'off';
+  const ct = cardText(info);
   const backSpeak = card.example ? `${card.back}. ${card.example}` : card.back;
   const label = card.type && card.type !== 'vocab' ? ({ phrasal: 'Phrasal verb' }[card.type] || card.type) : '';
   const speakBtn = (text, extra = '') => speech ? `
@@ -1139,14 +1156,14 @@ function drawStudyCard() {
           ${speakBtn(card.front)}
         </div>
         ${card.practice ? `<p class="mt-3 inline-block text-[13px] font-medium text-rate-again bg-accent-tint px-2.5 py-1 rounded-full">Practice round · won’t change its schedule</p>` : ''}
-        <div class="mt-8 prose-content text-[28px] leading-[1.45] font-medium text-ink">${md(card.front)}</div>
+        <div class="mt-8 prose-content card-text${ct.cls} text-[28px] leading-[1.45] font-medium text-ink"${ct.attr}>${md(card.front)}</div>
 
         <div id="answer" class="${flipped ? '' : 'hidden'} mt-6 pt-5 border-t border-line">
           <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0 prose-content text-[20px] leading-7 font-semibold text-ink">${md(card.back)}</div>
+            <div class="min-w-0 prose-content card-text${ct.cls} text-[20px] leading-7 font-semibold text-ink"${ct.attr}>${md(card.back)}</div>
             ${speakBtn(backSpeak, '-mt-2')}
           </div>
-          ${card.example ? `<div class="mt-3 prose-content text-[15px] leading-[22px] text-ink/75">${md(card.example)}</div>` : ''}
+          ${card.example ? `<div class="mt-3 prose-content card-text text-[15px] leading-[22px] text-ink/75"${ct.attr}>${md(card.example)}</div>` : ''}
         </div>
       </div>
     </div>
@@ -1387,12 +1404,13 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
   const cardType = card?.type || draft?.type || 'vocab';
   const backHash = ret?.startsWith('#/study/') ? ret : deckId ? `#/decks/${deckId}` : '#/';
 
+  const ct = cardText(info);
   const field = (key, label, rows, optional) => `
     ${groupLabel(`${escHtml(label)}${optional ? ' <span class="normal-case">(optional)</span>' : ''}`)}
     <div class="bg-surface rounded-[14px] overflow-hidden">
-      <textarea id="edit-${key}" rows="${rows}" aria-label="${escHtml(label)}" placeholder="${escHtml(label)}"
-        class="edit-field w-full bg-transparent px-4 py-3 text-[17px] leading-6 text-ink placeholder:text-muted/70 resize-none focus:outline-none">${escHtml(values[key])}</textarea>
-      <div id="preview-${key}" class="edit-preview hidden px-4 py-3 min-h-12 prose-content text-[17px] leading-6 text-ink"></div>
+      <textarea id="edit-${key}" rows="${rows}" aria-label="${escHtml(label)}" placeholder="${escHtml(label)}"${ct.attr}
+        class="edit-field card-text${key === 'example' ? '' : ct.cls} w-full bg-transparent px-4 py-3 text-[17px] leading-6 text-ink placeholder:text-muted/70 resize-none focus:outline-none">${escHtml(values[key])}</textarea>
+      <div id="preview-${key}"${ct.attr} class="edit-preview card-text${key === 'example' ? '' : ct.cls} hidden px-4 py-3 min-h-12 prose-content text-[17px] leading-6 text-ink"></div>
       <div class="pl-4 border-t border-line">
         <button type="button" id="image-btn-edit-${key}" onclick="pickImageFor('edit-${key}')" class="h-11 text-[15px] text-accent active:opacity-60">Add image</button>
       </div>

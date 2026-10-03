@@ -115,9 +115,10 @@ const deckCols = db.prepare(`PRAGMA table_info(decks)`).all().map(c => c.name);
 if (!deckCols.includes('silence_notified_at')) db.exec(`ALTER TABLE decks ADD COLUMN silence_notified_at INTEGER`);
 // Per-deck FSRS target retention; NULL = the global default (fsrs.js DEFAULT_RETENTION).
 if (!deckCols.includes('target_retention'))    db.exec(`ALTER TABLE decks ADD COLUMN target_retention REAL`);
-// Per-deck card template: field labels (NULL = Front/Back/Example) and speech
-// language (NULL = en-US, the old behaviour; 'off' = no speech).
-for (const col of ['front_label', 'back_label', 'example_label', 'tts_lang'])
+// Per-deck card template: field labels (NULL = Front/Back/Example), speech
+// language (NULL = en-US, the old behaviour; 'off' = no speech) and card font
+// (NULL = 'sans'; 'serif' = Mincho/serif for studying kanji stroke detail).
+for (const col of ['front_label', 'back_label', 'example_label', 'tts_lang', 'font'])
   if (!deckCols.includes(col)) db.exec(`ALTER TABLE decks ADD COLUMN ${col} TEXT`);
 const settingCols = db.prepare(`PRAGMA table_info(settings)`).all().map(c => c.name);
 if (!settingCols.includes('silence_threshold_days')) db.exec(`ALTER TABLE settings ADD COLUMN silence_threshold_days INTEGER NOT NULL DEFAULT 21`);

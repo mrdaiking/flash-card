@@ -9,6 +9,7 @@ router.get('/decks', (req, res) => {
     SELECT d.id, d.name, COALESCE(d.target_retention, ${DEFAULT_RETENTION}) AS target_retention,
       COALESCE(d.front_label, 'Front') AS front_label, COALESCE(d.back_label, 'Back') AS back_label,
       COALESCE(d.example_label, 'Example') AS example_label, COALESCE(d.tts_lang, 'en-US') AS tts_lang,
+      COALESCE(d.font, 'sans') AS font,
       COUNT(c.id) as total_count,
       SUM(CASE WHEN c.next_review <= ? THEN 1 ELSE 0 END) as due_count,
       -- due_count split for the Today screen: never-seen cards, cards whose
@@ -29,6 +30,7 @@ router.get('/decks', (req, res) => {
 // Template fields are optional; blank/missing falls back to the defaults at read time.
 const label = v => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 40) : null);
 const lang = v => (typeof v === 'string' && /^(off|[a-z]{2,3}(-[A-Za-z]{2,4})?)$/.test(v) ? v : null);
+const font = v => (v === 'serif' ? 'serif' : null);
 
 router.post('/decks', (req, res) => {
   const { name, front_label, back_label, example_label, tts_lang } = req.body;
@@ -40,10 +42,10 @@ router.post('/decks', (req, res) => {
 });
 
 router.put('/decks/:id/template', (req, res) => {
-  const { front_label, back_label, example_label, tts_lang } = req.body;
+  const { front_label, back_label, example_label, tts_lang, font: deckFont } = req.body;
   const result = db.prepare(
-    'UPDATE decks SET front_label = ?, back_label = ?, example_label = ?, tts_lang = ? WHERE id = ?'
-  ).run(label(front_label), label(back_label), label(example_label), lang(tts_lang), req.params.id);
+    'UPDATE decks SET front_label = ?, back_label = ?, example_label = ?, tts_lang = ?, font = ? WHERE id = ?'
+  ).run(label(front_label), label(back_label), label(example_label), lang(tts_lang), font(deckFont), req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Deck not found' });
   res.json({ id: Number(req.params.id) });
 });

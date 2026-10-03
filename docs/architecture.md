@@ -149,4 +149,5 @@ Hướng dẫn viết thẻ, định dạng CSV và prompt để AI tạo thẻ:
 - Study: không còn thẻ lật 3D; câu hỏi ở trên, đáp án hiện bên dưới; nút "Show answer" ở vùng ngón cái; 4 nút chấm điểm một hàng kèm khoảng cách ôn tiếp theo; menu "⋯" chứa sửa thẻ, yêu thích, đọc to.
 - Không dùng `alert`/`confirm` của trình duyệt: `confirmSheet()` (action sheet kiểu iOS) và `showToast()` trong `app.js`. Các sheet dùng `sheetHTML()` (Cancel · tiêu đề · Save) và class `.sheet` cho animation.
 - Deck: danh sách nhóm, chạm vào dòng để sửa thẻ; xoá thẻ nằm trong màn hình sửa. Trình sửa thẻ: thanh Cancel/Save cố định ở trên, một công tắc Edit/Preview chung.
+- Font theo ngôn ngữ: text của thẻ được gắn `lang` theo ngôn ngữ đọc (tts_lang) của deck (`ja-JP` → `lang="ja"`), để iPhone dùng Hiragino và đúng nét kanji Nhật (không bị nét chữ Hán Trung Quốc); tiếng Nhật được giãn dòng 1.7. Mỗi deck có thêm tuỳ chọn font thẻ `font` = sans (mặc định) hoặc serif (Hiragino Mincho) để thấy chi tiết nét kanji. Deck tắt đọc (`off`) thì không gắn `lang`.
 
