@@ -1220,7 +1220,7 @@ function drawStudyCard() {
         <button onclick="showStudyMenu()" aria-label="More" class="w-11 h-11 flex items-center justify-center text-ink/70 active:opacity-50">${studyIcon.more}</button>
       </div>
 
-      <div id="study-body" onclick="flipCard()" class="flex-1 px-6 pb-44 cursor-pointer select-none animate-card-in">
+      <div id="study-body" onclick="studyTap(event)" class="flex-1 px-6 pb-44 cursor-pointer select-none animate-card-in">
         <div class="mt-5 flex items-center justify-between gap-3">
           <span class="min-w-0 truncate text-[13px] text-muted flex items-center gap-1.5">
             ${escHtml(deckById[card.deck_id]?.name || '')}${label ? ` · ${escHtml(label)}` : ''}
@@ -1288,6 +1288,14 @@ function toggleFurigana() {
   try { localStorage.setItem('fc_furigana', furiganaOn ? 'on' : 'off'); } catch {}
   document.documentElement.classList.toggle('furigana-off', !furiganaOn);
   document.getElementById('furigana-btn')?.replaceWith(document.createRange().createContextualFragment(furiganaBtn().trim()));
+}
+
+// With furigana off, tapping a word peeks at just its reading (tap again to hide);
+// any other tap flips the card as before.
+function studyTap(e) {
+  const ruby = !furiganaOn && e.target.closest?.('ruby');
+  if (ruby) return ruby.classList.toggle('peek');
+  flipCard();
 }
 
 function showStudyMenu() { showModal('study-menu'); }
