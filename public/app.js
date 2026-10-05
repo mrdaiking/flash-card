@@ -1205,6 +1205,7 @@ function drawStudyCard() {
   const speech = lang !== 'off';
   const ct = cardText(info);
   const backSpeak = card.example ? `${card.back}. ${card.example}` : card.back;
+  const hasFurigana = /<ruby>/.test(md(`${card.front}\n${card.back}\n${card.example || ''}`));
   const label = card.type && card.type !== 'vocab' ? ({ phrasal: 'Phrasal verb' }[card.type] || card.type) : '';
   const speakBtn = (text, extra = '') => speech ? `
     <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(text))}, '${lang}')" aria-label="Play audio"
@@ -1225,7 +1226,7 @@ function drawStudyCard() {
             ${escHtml(deckById[card.deck_id]?.name || '')}${label ? ` · ${escHtml(label)}` : ''}
             <span id="study-star" class="text-rate-hard ${card.is_favorite ? '' : 'hidden'}">${studyIcon.star}</span>
           </span>
-          ${speakBtn(card.front)}
+          <span class="flex items-center gap-1">${hasFurigana ? furiganaBtn() : ''}${speakBtn(card.front)}</span>
         </div>
         ${card.practice ? `<p class="mt-3 inline-block text-[13px] font-medium text-rate-again bg-accent-tint px-2.5 py-1 rounded-full">Practice round · won’t change its schedule</p>` : ''}
         <div class="mt-8 prose-content card-text${ct.cls} text-[28px] leading-[1.45] font-medium text-ink"${ct.attr}>${md(card.front)}</div>
@@ -1273,6 +1274,20 @@ function drawStudyCard() {
 
   setupSwipe();
   if (ttsMode === 'both' || ttsMode === 'front') speak(card.front, lang);
+}
+
+// Study-screen furigana switch: hides readings (keeping their space so text doesn't jump)
+// to test yourself; remembered on this device.
+let furiganaOn = localStorage.getItem('fc_furigana') !== 'off';
+document.documentElement.classList.toggle('furigana-off', !furiganaOn);
+const furiganaBtn = () => `
+  <button id="furigana-btn" onclick="event.stopPropagation(); toggleFurigana()" aria-label="Furigana" aria-pressed="${furiganaOn}"
+    class="h-8 px-2.5 rounded-full text-[13px] font-medium active:opacity-60 ${furiganaOn ? 'bg-accent-tint text-accent' : 'bg-base text-muted'}">ふりがな</button>`;
+function toggleFurigana() {
+  furiganaOn = !furiganaOn;
+  try { localStorage.setItem('fc_furigana', furiganaOn ? 'on' : 'off'); } catch {}
+  document.documentElement.classList.toggle('furigana-off', !furiganaOn);
+  document.getElementById('furigana-btn')?.replaceWith(document.createRange().createContextualFragment(furiganaBtn().trim()));
 }
 
 function showStudyMenu() { showModal('study-menu'); }
