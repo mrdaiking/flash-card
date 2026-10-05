@@ -133,6 +133,8 @@
     .prose-content hr { border: 0; border-top: 1px solid rgb(var(--color-line)); margin: 0.75em 0; }
     .prose-content th, .prose-content td { border: 1px solid rgb(var(--color-line)); padding: 0.25em 0.5em; }
     .prose-content th { font-weight: 600; }
+    /* Furigana: small reading above kanji; not selectable so copying gives just the kanji. */
+    .prose-content rt { font-size: 0.5em; font-weight: 400; color: rgb(var(--color-muted)); user-select: none; -webkit-user-select: none; }
     /* iOS-style switch and round checkbox (import screen). */
     .ios-switch { -webkit-appearance: none; appearance: none; flex-shrink: 0; position: relative; width: 51px; height: 31px; border-radius: 999px; background: rgb(var(--color-line)); transition: background 0.2s; cursor: pointer; }
     .ios-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 999px; background: #fff; box-shadow: 0 2px 4px rgb(0 0 0 / 0.2); transition: transform 0.2s; }

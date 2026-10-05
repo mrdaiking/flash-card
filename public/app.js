@@ -55,10 +55,39 @@ if (typeof marked !== 'undefined' && marked.use) {
       if (m) return { type: 'highlight', raw: m[0], tokens: this.lexer.inlineTokens(m[1]) };
     },
     renderer(token) { return `<mark>${this.parser.parseInline(token.tokens)}</mark>`; },
+  }, {
+    // Furigana → <ruby>. Two spellings:
+    //   Anki:     漢字[かんじ]      (base = the kanji run right before the brackets)
+    //   Obsidian: {漢字|かんじ}  or  {漢字|かん|じ}  (one reading per character)
+    name: 'ruby',
+    level: 'inline',
+    start(src) {
+      const i = [src.search(RUBY_ANKI), src.search(RUBY_CURLY)].filter(n => n >= 0);
+      return i.length ? Math.min(...i) : undefined;
+    },
+    tokenizer(src) {
+      let m = new RegExp('^' + RUBY_ANKI.source, 'u').exec(src);
+      if (m) return { type: 'ruby', raw: m[0], pairs: [[m[1], m[2]]] };
+      m = new RegExp('^' + RUBY_CURLY.source, 'u').exec(src);
+      if (!m) return;
+      const base = [...m[1]], readings = m[2].split('|');
+      const pairs = readings.length > 1 && readings.length === base.length
+        ? base.map((ch, i) => [ch, readings[i]])
+        : [[m[1], readings.join('')]];
+      return { type: 'ruby', raw: m[0], pairs };
+    },
+    renderer(token) {
+      return `<ruby>${token.pairs.map(([b, r]) => `${escHtml(b)}<rp>(</rp><rt>${escHtml(r)}</rt><rp>)</rp>`).join('')}</ruby>`;
+    },
   }] });
 }
+// Anki-style furigana: a run of kanji directly followed by [reading], not a [link](url).
+const RUBY_ANKI = /([\p{Script=Han}々〆ヶ]+)\[([^\]\n]+)\](?!\()/u;
+const RUBY_CURLY = /\{([^{}|\n]*[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^{}|\n]*)\|([^{}\n]+)\}/u;
 const md = text => {
   if (!text) return '';
+  // Anki separates a furigana word from preceding Japanese with a space ("この 本[ほん]"); drop that space.
+  text = text.replace(new RegExp('(?<=[^\\x00-\\x7F]) (?=' + RUBY_ANKI.source + ')', 'gu'), '');
   if (typeof marked === 'function') return marked(text, { breaks: true });
   if (marked && marked.parse) return marked.parse(text, { breaks: true });
   return escHtml(text);
@@ -141,6 +170,8 @@ function updateTTSModeButton() {
 function stripHtml(html) {
   const tmp = document.createElement('div');
   tmp.innerHTML = html;
+  // Furigana readings would otherwise be read aloud / previewed twice ("漢字かんじ").
+  tmp.querySelectorAll('rt, rp').forEach(el => el.remove());
   return tmp.textContent || tmp.innerText || '';
 }
 
