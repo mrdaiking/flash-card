@@ -87,7 +87,7 @@ function insertAtCursor(textarea, text) {
   const end = textarea.selectionEnd ?? textarea.value.length;
   textarea.value = textarea.value.slice(0, start) + text + textarea.value.slice(end);
   textarea.selectionStart = textarea.selectionEnd = start + text.length;
-  textarea.dispatchEvent(new Event('input'));
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 let imageUploadTargetId = null;
@@ -441,6 +441,14 @@ function sheetHTML(id, title, body, { cancel, save, saveLabel = 'Save', saveId =
 }
 
 // Grouped-list text field used inside sheets and forms.
+// Card text boxes grow with their content (up to ~half the screen, then scroll inside)
+// so a long note isn't hidden behind a 3-line box. Opt in with data-grow.
+const autoGrow = ta => {
+  if (!ta || ta.offsetParent === null) return;
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(ta.scrollHeight + 2, window.innerHeight * 0.55) + 'px';
+};
+document.addEventListener('input', e => { if (e.target.matches?.('textarea[data-grow]')) autoGrow(e.target); });
 const fieldCls = 'w-full bg-surface rounded-[10px] px-4 text-[17px] text-ink placeholder:text-muted/70 focus:outline-none focus:ring-2 focus:ring-accent/40';
 
 // Replaces window.confirm: resolves true when the action is chosen.
@@ -676,9 +684,9 @@ async function renderDeckDetail(app, deckId) {
 
     ${sheetHTML('quick-add', `Add card <span id="qa-count" class="text-[15px] font-normal text-muted"></span>`, `
       <div class="space-y-2">
-        <textarea id="qa-front"${ct.attr} rows="2" placeholder="${escHtml(deck.front_label)}" class="${fieldCls} py-3 resize-none"></textarea>
-        <textarea id="qa-back"${ct.attr} rows="2" placeholder="${escHtml(deck.back_label)}" class="${fieldCls} py-3 resize-none"></textarea>
-        <textarea id="qa-example"${ct.attr} rows="1" placeholder="${escHtml(deck.example_label)} (optional)" class="${fieldCls} py-3 resize-none"></textarea>
+        <textarea id="qa-front"${ct.attr} data-grow rows="3" placeholder="${escHtml(deck.front_label)}" class="${fieldCls} py-3 resize-none"></textarea>
+        <textarea id="qa-back"${ct.attr} data-grow rows="3" placeholder="${escHtml(deck.back_label)}" class="${fieldCls} py-3 resize-none"></textarea>
+        <textarea id="qa-example"${ct.attr} data-grow rows="2" placeholder="${escHtml(deck.example_label)} (optional)" class="${fieldCls} py-3 resize-none"></textarea>
         <input id="qa-type" list="type-list" maxlength="30" placeholder="Label (optional)" class="${fieldCls} h-11"/>
         ${typeList}
       </div>
@@ -811,7 +819,7 @@ async function saveQuickAdd(deckId) {
   btn.disabled = false;
   quickAddCount++;
   document.getElementById('qa-count').textContent = `· ${quickAddCount} added`;
-  for (const id of ['qa-front', 'qa-back', 'qa-example']) document.getElementById(id).value = '';
+  for (const id of ['qa-front', 'qa-back', 'qa-example']) { const ta = document.getElementById(id); ta.value = ''; ta.style.height = ''; }
   document.getElementById('qa-front').focus();
 }
 function hideDeckMenu(e) {
@@ -1434,7 +1442,7 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
   const field = (key, label, rows, optional) => `
     ${groupLabel(`${escHtml(label)}${optional ? ' <span class="normal-case">(optional)</span>' : ''}`)}
     <div class="bg-surface rounded-[14px] overflow-hidden">
-      <textarea id="edit-${key}" rows="${rows}" aria-label="${escHtml(label)}" placeholder="${escHtml(label)}"${ct.attr}
+      <textarea id="edit-${key}" data-grow rows="${rows}" aria-label="${escHtml(label)}" placeholder="${escHtml(label)}"${ct.attr}
         class="edit-field card-text${key === 'example' ? '' : ct.cls} w-full bg-transparent px-4 py-3 text-[17px] leading-6 text-ink placeholder:text-muted/70 resize-none focus:outline-none">${escHtml(values[key])}</textarea>
       <div id="preview-${key}"${ct.attr} class="edit-preview card-text${key === 'example' ? '' : ct.cls} hidden px-4 py-3 min-h-12 prose-content text-[17px] leading-6 text-ink"></div>
       <div class="pl-4 border-t border-line">
@@ -1457,9 +1465,9 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
           <button id="mode-preview" onclick="setEditorMode(true)" role="tab" class="h-8 rounded-[7px] text-[13px] font-semibold text-muted">Preview</button>
         </div>
 
-        ${field('front', info.front_label, 3)}
-        ${field('back', info.back_label, 4)}
-        ${field('example', info.example_label, 2, true)}
+        ${field('front', info.front_label, 4)}
+        ${field('back', info.back_label, 5)}
+        ${field('example', info.example_label, 3, true)}
 
         ${groupLabel('Label <span class="normal-case">(optional)</span>')}
         <input id="edit-type" list="edit-type-list" maxlength="30" value="${escHtml(cardType === 'vocab' ? '' : cardType)}" placeholder="e.g. Idiom, Pattern, Rule" aria-label="Label"
@@ -1476,7 +1484,12 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
     </div>
   `;
 
-  for (const key of ['front', 'back', 'example']) wirePasteImage(document.getElementById(`edit-${key}`));
+  for (const key of ['front', 'back', 'example']) {
+    const ta = document.getElementById(`edit-${key}`);
+    wirePasteImage(ta);
+    // After Tailwind's CDN styles the new markup, or the measured height is off.
+    requestAnimationFrame(() => autoGrow(ta));
+  }
 
   document.getElementById('image-picker').addEventListener('change', async e => {
     const file = e.target.files[0];
@@ -1508,6 +1521,7 @@ function setEditorMode(preview) {
     if (preview) pv.innerHTML = ta.value.trim() ? md(ta.value) : '<span class="text-muted">Empty</span>';
     ta.classList.toggle('hidden', preview);
     pv.classList.toggle('hidden', !preview);
+    if (!preview) autoGrow(ta);
   }
   const on = 'bg-surface text-ink shadow-sm', off = 'text-muted';
   const [edit, prev] = [document.getElementById('mode-edit'), document.getElementById('mode-preview')];
