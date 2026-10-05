@@ -44,6 +44,19 @@ applyTheme();
 
 /* ── Markdown helper ── */
 // breaks:true so a single Enter is a line break (marked's default needs a blank line).
+// Obsidian-style ==highlight== → <mark>.
+if (typeof marked !== 'undefined' && marked.use) {
+  marked.use({ extensions: [{
+    name: 'highlight',
+    level: 'inline',
+    start: src => src.indexOf('=='),
+    tokenizer(src) {
+      const m = /^==(?=\S)([\s\S]*?\S)==/.exec(src);
+      if (m) return { type: 'highlight', raw: m[0], tokens: this.lexer.inlineTokens(m[1]) };
+    },
+    renderer(token) { return `<mark>${this.parser.parseInline(token.tokens)}</mark>`; },
+  }] });
+}
 const md = text => {
   if (!text) return '';
   if (typeof marked === 'function') return marked(text, { breaks: true });
