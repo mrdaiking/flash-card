@@ -401,6 +401,60 @@ function router() {
 }
 
 window.addEventListener('hashchange', router);
+
+// Pull-to-refresh: installed iOS PWAs have no browser reload. Only on list-style
+// screens — study uses taps/swipes and the edit forms hold unsaved text.
+const PTR_ROUTES = /^(#\/|#\/decks\/\d+|#\/stats|#\/recap|#\/settings)?$/;
+(function initPullToRefresh() {
+  const THRESHOLD = 70;
+  let startY = null, pull = 0, busy = false;
+  const ind = document.createElement('div');
+  ind.setAttribute('aria-hidden', 'true');
+  ind.className = 'fixed left-1/2 z-50 pointer-events-none text-muted text-xl';
+  ind.style.cssText = 'top:calc(env(safe-area-inset-top) + 8px);opacity:0;transform:translate(-50%,-40px)';
+  ind.textContent = '↓';
+  document.body.appendChild(ind);
+
+  const show = (y, spin) => {
+    ind.style.transition = spin ? 'none' : '';
+    ind.style.opacity = Math.min(y / THRESHOLD, 1);
+    ind.style.transform = `translate(-50%, ${y - 40}px) rotate(${y >= THRESHOLD ? 180 : 0}deg)`;
+  };
+  const hide = () => {
+    ind.style.transition = 'opacity .2s, transform .2s';
+    ind.style.opacity = 0;
+    ind.style.transform = 'translate(-50%,-40px)';
+  };
+
+  document.addEventListener('touchstart', e => {
+    const open = document.querySelector('.fixed.inset-0:not(.hidden)');
+    startY = (!busy && !open && window.scrollY <= 0 && e.touches.length === 1 &&
+      PTR_ROUTES.test(window.location.hash)) ? e.touches[0].clientY : null;
+    pull = 0;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    if (startY === null) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0 || window.scrollY > 0) { startY = null; hide(); return; }
+    pull = Math.min(dy * 0.5, THRESHOLD * 1.4);
+    show(pull, true);
+  }, { passive: true });
+
+  document.addEventListener('touchend', async () => {
+    if (startY === null) return;
+    startY = null;
+    if (pull < THRESHOLD) { hide(); return; }
+    busy = true;
+    ind.textContent = '⟳';
+    ind.style.transition = 'transform .2s';
+    ind.style.transform = 'translate(-50%, 16px)';
+    // Flush offline-queued reviews first so fresh counts include them.
+    try { (await navigator.serviceWorker?.ready)?.active?.postMessage('replay-reviews'); } catch {}
+    router();
+    setTimeout(() => { hide(); ind.textContent = '↓'; busy = false; }, 600);
+  });
+})();
 window.addEventListener('load', () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(console.error);
