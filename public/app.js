@@ -1794,7 +1794,7 @@ async function renderSettings(app) {
     if (el && s) el.value = utcToLocalTimeStr(s.hour, s.minute);
   });
   // Server version + cached app files (SW cache); if the cache lags the server, the phone is on stale files.
-  Promise.all([api('/api/version'), caches?.keys() ?? []]).then(([v, ks]) => {
+  Promise.all([api('/api/version'), window.caches?.keys() ?? []]).then(([v, ks]) => {
     const el = document.getElementById('app-version');
     const c = ks.find(k => k.startsWith('felix-cards-'))?.replace('felix-cards-', '');
     if (el && v) el.innerHTML = `Felix Cards ${v.version} · ${v.commit}${v.date ? ` · ${v.date}` : ''}${c ? `<br>app files ${c}` : ''}`;

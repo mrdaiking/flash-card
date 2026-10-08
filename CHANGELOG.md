@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.2 - 2026-10-08
+
+### Fixes
+- Settings no longer loses the version line when the app is opened over plain HTTP (no Cache API there).
+
+### Changes
+- Service worker cache bumped to v54.
+
 ## 1.3.1 - 2026-10-08
 
 ### Features
