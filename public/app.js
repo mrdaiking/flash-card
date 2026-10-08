@@ -47,6 +47,25 @@ applyTheme();
 // Obsidian-style ==highlight== → <mark>.
 if (typeof marked !== 'undefined' && marked.use) {
   marked.use({ extensions: [{
+    // LaTeX: $...$ inline, $$...$$ display (KaTeX). One inline extension handles both so marked
+    // never sees the _ / \ inside the formula. "$5 and $6" is left alone (no space after the
+    // opening $ or before the closing one, closing $ not followed by a digit).
+    name: 'math',
+    level: 'inline',
+    start: src => src.search(/\$|\\[(\[]/),
+    tokenizer(src) {
+      // also \(...\) inline and \[...\] display (what ChatGPT-style answers emit)
+      let m = /^\\\[([\s\S]+?)\\\]/.exec(src), display = !!m;
+      if (!m) m = /^\\\(([\s\S]+?)\\\)/.exec(src);
+      if (!m) { m = /^\$\$([\s\S]+?)\$\$/.exec(src); display = !!m; }
+      if (!m) m = /^\$(?=\S)((?:\\\$|[^$\n])*?\S)\$(?!\d)/.exec(src);
+      if (m) return { type: 'math', raw: m[0], tex: m[1].trim(), display };
+    },
+    renderer(t) {
+      if (typeof katex === 'undefined') return escHtml(t.raw);
+      return katex.renderToString(t.tex, { displayMode: t.display, throwOnError: false });
+    },
+  }, {
     name: 'highlight',
     level: 'inline',
     start: src => src.indexOf('=='),

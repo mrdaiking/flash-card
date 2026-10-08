@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.1 - 2026-10-08
+
+### Features
+- LaTeX math on cards via KaTeX: `$...$`, `$$...$$`, `\(...\)`, `\[...\]`.
+
+### Changes
+- Service worker cache bumped to v53.
+
 ## 1.3.0 - 2026-10-07
 
 ### Features
