@@ -129,6 +129,7 @@ if (!deckCols.includes('read_aloud')) db.transaction(() => {
 })();
 const settingCols = db.prepare(`PRAGMA table_info(settings)`).all().map(c => c.name);
 if (!settingCols.includes('silence_threshold_days')) db.exec(`ALTER TABLE settings ADD COLUMN silence_threshold_days INTEGER NOT NULL DEFAULT 21`);
+if (!settingCols.includes('goal_minutes'))   db.exec(`ALTER TABLE settings ADD COLUMN goal_minutes INTEGER NOT NULL DEFAULT 15`);
 if (!settingCols.includes('renotify_days'))          db.exec(`ALTER TABLE settings ADD COLUMN renotify_days INTEGER NOT NULL DEFAULT 14`);
 
 // End-of-day email digest time (UTC; 12:00 UTC = 21:00 Tokyo) + once-a-day guard.

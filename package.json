@@ -1,6 +1,6 @@
 {
   "name": "anki-pwa",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "Self-hosted Anki-like Spaced Repetition PWA",
   "main": "server.js",
   "scripts": {

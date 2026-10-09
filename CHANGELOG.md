@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.0 - 2026-10-09
+
+### Features
+- Progress: Week / Month / Year switch with reviews, average per day, days studied, estimated study time and retention.
+- Progress: daily-goal calendar (ring fills toward the goal, check when reached). Goal in minutes, set in Settings (default 15).
+- Progress: cards by deck, split Mature / Learning / New, with the deck language.
+
+### Changes
+- Replaces the 7-day chart and the 12-week heatmap. New Progress endpoints cut days in the phone's timezone (the server runs in UTC).
+- Service worker cache bumped to v55.
+
 ## 1.3.2 - 2026-10-08
 
 ### Fixes

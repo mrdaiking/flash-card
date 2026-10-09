@@ -142,6 +142,12 @@ Hướng dẫn viết thẻ, định dạng CSV và prompt để AI tạo thẻ:
 
 **Kiểm tra sau khi deploy lên EC2** (runbook cũ vẫn áp dụng): backup `data/cards.db` trước; sau `npm install` + `pm2 restart anki-pwa --update-env`, kiểm tra có đủ cột FSRS và `settings.silence_threshold_days = 21`, và số thẻ due bằng với bản backup.
 
+**[Đã build — chưa commit/deploy] Màn Progress mới (2026-10-09):** thay biểu đồ 7 ngày + heatmap 12 tuần.
+- Chuyển Week / Month / Year (`GET /api/stats/overview?range=`): tổng lượt ôn, trung bình/ngày, số ngày học, thời gian học ước lượng, retention (% lượt ôn không phải Again).
+- Lịch mục tiêu ngày (`GET /api/stats/habit?month=`, `GET/PUT /api/settings/goal`, cột `settings.goal_minutes`, mặc định 15 phút, chỉnh ở Settings). **Quyết định:** thời gian học là *ước lượng* — tổng các khoảng cách ≤ 2 phút giữa hai review liên tiếp, không lưu `duration` trong bảng `reviews`. Muốn chính xác hơn thì thêm cột `duration` sau.
+- Phân bố thẻ theo deck (`GET /api/stats/decks`): New / Learning / Mature (interval ≥ 21 ngày), kèm `tts_lang` của deck.
+- Các endpoint mới cắt "ngày" theo múi giờ của client (`?tz=` phút lệch UTC) vì server chạy UTC. `/api/stats` (streak, reviewed_today) vẫn cắt theo giờ server — còn lệch, chưa sửa.
+
 ## Giao diện (redesign 2026-10)
 
 - Hướng iOS-native: font hệ thống (SF Pro), list nhóm kiểu Settings, một màu nhấn terracotta; token màu ở `public/index.html` (mọi cặp chữ/nền đạt WCAG AA). Icon "spaced dots" sinh bằng `scripts/generate-icons.js`.

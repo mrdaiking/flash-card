@@ -1685,13 +1685,16 @@ async function saveCard(cardId, deckId, backHash) {
 /* ════════════════════════════════════════
    Screen: Stats
 ════════════════════════════════════════ */
+let statsRange = 'week';
+let habitMonth = ''; // 'YYYY-MM'; '' = current month
+const tzQ = () => `tz=${-new Date().getTimezoneOffset()}`;
+
 async function renderStats(app) {
   loading(app);
-  const [stats, weekly, growth, heatmap] = await Promise.all([
+  const [stats, growth, decks] = await Promise.all([
     api('/api/stats'),
-    api('/api/stats/weekly'),
     api('/api/stats/vocab-growth?days=90'),
-    api('/api/stats/heatmap?weeks=12'),
+    api('/api/stats/decks'),
   ]);
   if (!stats) return;
 
@@ -1721,11 +1724,12 @@ async function renderStats(app) {
         <button onclick="navigate('#/recap')" class="w-full min-h-12 px-4 flex items-center justify-between text-[17px] text-ink active:bg-base">This week${ICON.chevronRight}</button>
       </section>
 
-      ${groupLabel('Reviews · last 7 days')}
-      <section class="bg-surface rounded-[14px] p-4"><div id="weekly-chart"></div></section>
+      <div id="overview"></div>
 
-      ${groupLabel('Activity · last 12 weeks')}
-      <section class="bg-surface rounded-[14px] p-4"><div id="heatmap"></div></section>
+      ${groupLabel('Daily goal')}
+      <section class="bg-surface rounded-[14px] p-4"><div id="habit"></div></section>
+
+      ${decks?.length ? `${groupLabel('Cards by deck')}<section class="bg-surface rounded-[14px] p-4"><div id="deck-bars"></div></section>` : ''}
 
       ${showGrowth ? `
         ${groupLabel('Cards added · last 90 days')}
@@ -1734,8 +1738,123 @@ async function renderStats(app) {
   `;
 
   if (showGrowth) renderGrowthChart(growth);
-  if (heatmap) renderHeatmap(heatmap);
-  if (weekly) renderWeeklyChart(weekly);
+  if (decks?.length) renderDeckBars(decks);
+  loadOverview();
+  loadHabit();
+}
+
+async function loadOverview() {
+  const el = document.getElementById('overview');
+  if (!el) return;
+  const o = await api(`/api/stats/overview?range=${statsRange}&${tzQ()}`);
+  if (!o || !document.getElementById('overview')) return;
+  const seg = ['week', 'month', 'year'].map(r =>
+    `<button onclick="statsRange='${r}';loadOverview()" class="flex-1 h-8 rounded-[7px] text-[13px] font-semibold capitalize ${r === statsRange ? 'bg-surface text-ink shadow-sm' : 'text-muted'}">${r}</button>`).join('');
+  const fmtMin = m => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min`;
+  const stat = [
+    ['Reviews', o.reviews],
+    ['Average per day', o.avg_per_day],
+    ['Days studied', `${o.days_studied}<span class="text-muted"> / ${{ week: 7, month: 30, year: 365 }[o.range]}</span>`],
+    ['Study time <span class="text-muted">· estimated</span>', fmtMin(o.minutes)],
+    ['Retention <span class="text-muted">· not "Again"</span>', o.retention === null ? '–' : `${o.retention}%`],
+  ];
+  el.innerHTML = `
+    ${groupLabel('Reviews')}
+    <div class="flex p-0.5 rounded-[9px] bg-line">${seg}</div>
+    <section class="mt-3 bg-surface rounded-[14px] p-4"><div id="range-chart"></div></section>
+    <section class="mt-3 bg-surface rounded-[14px] overflow-hidden">
+      ${stat.map(([l, v], i) => `
+        <div class="pl-4"><div class="flex items-center justify-between min-h-12 pr-4 ${i < stat.length - 1 ? 'border-b border-line' : ''}">
+          <span class="text-[17px] text-ink">${l}</span><span class="text-[17px] text-ink">${v}</span>
+        </div></div>`).join('')}
+    </section>`;
+  renderRangeChart(o);
+}
+
+function renderRangeChart(o) {
+  const el = document.getElementById('range-chart');
+  if (!el) return;
+  const b = o.buckets;
+  if (b.every(x => x.count === 0)) { el.innerHTML = '<p class="text-muted text-sm text-center py-4">No reviews in this period</p>'; return; }
+  const max = Math.max(...b.map(x => x.count), 1);
+  const W = 300, H = 120, slot = W / b.length, barW = Math.max(3, slot * 0.7);
+  const label = (x, i) => {
+    if (o.range === 'week') return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(x.key + 'T12:00:00').getDay()];
+    if (o.range === 'year') return new Date(x.key + '-15T12:00:00').toLocaleDateString(undefined, { month: 'narrow' });
+    return i % 5 === 0 ? Number(x.key.slice(8)) : '';
+  };
+  const bars = b.map((x, i) => {
+    const bh = x.count ? Math.max(3, (x.count / max) * (H - 32)) : 3;
+    const cx = slot * i + slot / 2, y = H - 18 - bh;
+    return `
+      <rect x="${cx - barW / 2}" y="${y}" width="${barW}" height="${bh}" rx="${Math.min(4, barW / 2)}" style="fill:${x.count ? 'rgb(var(--color-accent))' : 'rgb(var(--color-line))'}"><title>${x.key}: ${x.count} reviews</title></rect>
+      <text x="${cx}" y="${H - 5}" text-anchor="middle" style="fill:rgb(var(--color-muted))" font-size="9" font-family="sans-serif">${label(x, i)}</text>
+      ${x.count && o.range !== 'month' ? `<text x="${cx}" y="${y - 4}" text-anchor="middle" style="fill:rgb(var(--color-ink))" font-size="9" font-family="sans-serif">${x.count}</text>` : ''}`;
+  }).join('');
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full">${bars}</svg>`;
+}
+
+async function loadHabit() {
+  const el = document.getElementById('habit');
+  if (!el) return;
+  const h = await api(`/api/stats/habit?${habitMonth ? `month=${habitMonth}&` : ''}${tzQ()}`);
+  if (!h || !document.getElementById('habit')) return;
+  habitMonth = h.month;
+  const [y, m] = h.month.split('-').map(Number);
+  const today = new Date().toLocaleDateString('en-CA');
+  const lead = new Date(y, m - 1, 1).getDay();
+  const R = 15, C = 2 * Math.PI * R;
+  const met = h.days.filter(d => d.minutes >= h.goal_minutes).length;
+  const cells = h.days.map(d => {
+    const pct = Math.min(1, d.minutes / h.goal_minutes);
+    const done = pct >= 1, future = d.day > today;
+    const ring = `
+      <svg viewBox="0 0 36 36" class="w-9 h-9">
+        <circle cx="18" cy="18" r="${R}" fill="${done ? 'rgb(var(--color-accent))' : 'none'}" style="stroke:rgb(var(--color-line))" stroke-width="3"/>
+        ${pct > 0 && !done ? `<circle cx="18" cy="18" r="${R}" fill="none" style="stroke:rgb(var(--color-accent))" stroke-width="3" stroke-linecap="round" stroke-dasharray="${(pct * C).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 18 18)"/>` : ''}
+        ${done ? '<path d="M11.5 18.5l4.5 4.5 8.5-9.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>' : ''}
+        ${done ? '' : `<text x="18" y="22" text-anchor="middle" style="fill:rgb(var(--color-${d.day === today ? 'ink' : 'muted'}))" font-size="11" font-family="sans-serif" ${d.day === today ? 'font-weight="bold"' : ''}>${Number(d.day.slice(8))}</text>`}
+      </svg>`;
+    return `<div class="flex justify-center ${future ? 'opacity-40' : ''}" title="${d.day}: ${d.minutes} min, ${d.count} reviews">${ring}</div>`;
+  });
+  const monthName = new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const curMonth = today.slice(0, 7);
+  el.innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <button onclick="shiftHabitMonth(-1)" aria-label="Previous month" class="w-9 h-9 text-[22px] text-accent active:opacity-60">‹</button>
+      <div class="text-center"><div class="text-[17px] font-semibold text-ink">${monthName}</div>
+        <div class="text-[13px] text-muted">${met} day${met === 1 ? '' : 's'} reached ${h.goal_minutes} min</div></div>
+      <button onclick="shiftHabitMonth(1)" aria-label="Next month" ${h.month >= curMonth ? 'disabled' : ''} class="w-9 h-9 text-[22px] text-accent active:opacity-60 disabled:opacity-30">›</button>
+    </div>
+    <div class="grid grid-cols-7 gap-y-1.5 text-center text-[11px] text-muted mb-1">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => `<span>${d}</span>`).join('')}</div>
+    <div class="grid grid-cols-7 gap-y-1.5">${'<div></div>'.repeat(lead)}${cells.join('')}</div>
+    <p class="mt-3 text-[13px] text-muted text-center">Study time is estimated from the gaps between reviews. Change the goal in Settings.</p>`;
+}
+
+function shiftHabitMonth(delta) {
+  const [y, m] = habitMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  habitMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  loadHabit();
+}
+
+function renderDeckBars(decks) {
+  const el = document.getElementById('deck-bars');
+  if (!el) return;
+  const max = Math.max(...decks.map(d => d.new_cards + d.learning + d.mature), 1);
+  const seg = (n, color) => n ? `<div style="width:${(n / max) * 100}%;background:rgb(var(--color-${color}))"></div>` : '';
+  el.innerHTML = decks.map(d => `
+    <div class="${d === decks[0] ? '' : 'mt-3'}">
+      <div class="flex items-baseline justify-between gap-2 text-[15px]">
+        <span class="text-ink truncate">${escHtml(d.name)} <span class="text-[12px] text-muted">${escHtml(d.lang || 'en-US')}</span></span>
+        <span class="text-muted shrink-0">${d.mature}<span class="text-[12px]"> / ${d.new_cards + d.learning + d.mature}</span></span>
+      </div>
+      <div class="mt-1 flex h-2.5 rounded-full overflow-hidden bg-base">${seg(d.mature, 'accent-dark')}${seg(d.learning, 'accent')}${seg(d.new_cards, 'line')}</div>
+    </div>`).join('') + `
+    <p class="mt-4 text-[12px] text-muted flex flex-wrap gap-x-3">
+      <span><i class="inline-block w-2 h-2 rounded-full align-middle mr-1" style="background:rgb(var(--color-accent-dark))"></i>Mature (21+ days)</span>
+      <span><i class="inline-block w-2 h-2 rounded-full align-middle mr-1" style="background:rgb(var(--color-accent))"></i>Learning</span>
+      <span><i class="inline-block w-2 h-2 rounded-full align-middle mr-1" style="background:rgb(var(--color-line))"></i>New</span></p>`;
 }
 
 async function renderSettings(app) {
@@ -1761,6 +1880,7 @@ async function renderSettings(app) {
       <section class="bg-surface rounded-[14px] overflow-hidden">
         ${row('Notifications', `<button id="push-enable-btn" onclick="enablePush()" class="h-9 px-3 rounded-lg bg-base text-[15px] font-semibold text-accent disabled:text-muted">Enable</button>`)}
         ${row('Daily reminder', `<input id="reminder-time" type="time" onchange="saveReminderTime()" class="${inputCls}"/>`, false, 'reminder-time')}
+        ${row('Daily study goal', `<span class="flex items-center gap-2"><input id="goal-min" type="number" min="1" max="240" inputmode="numeric" onchange="saveGoal()" class="${inputCls} w-16 text-center"/><span class="text-[17px] text-muted">min</span></span>`, false, 'goal-min')}
         ${row('Quiet deck nudge after', `<span class="flex items-center gap-2"><input id="silence-days" type="number" min="1" max="365" inputmode="numeric" onchange="saveSilenceDays()" class="${inputCls} w-16 text-center"/><span class="text-[17px] text-muted">days</span></span>`, true, 'silence-days')}
       </section>
       <p class="mt-1.5 px-4 text-[13px] text-muted">Notifications only work in the app added to your Home Screen (iOS 16.4 or later).</p>
@@ -1788,6 +1908,10 @@ async function renderSettings(app) {
   api('/api/settings/silence').then(s => {
     const el = document.getElementById('silence-days');
     if (el && s) el.value = s.thresholdDays;
+  });
+  api('/api/settings/goal').then(s => {
+    const el = document.getElementById('goal-min');
+    if (el && s) el.value = s.minutes;
   });
   api('/api/settings/digest').then(s => {
     const el = document.getElementById('digest-time');
@@ -1880,6 +2004,13 @@ async function enablePush() {
   }
 }
 
+async function saveGoal() {
+  const input = document.getElementById('goal-min');
+  const status = document.getElementById('push-status');
+  const res = await api('/api/settings/goal', { method: 'PUT', body: JSON.stringify({ minutes: Number(input.value) }) });
+  if (status) status.textContent = res?.minutes ? `Daily goal set to ${res.minutes} min.` : 'Enter a number of minutes between 1 and 240.';
+}
+
 async function saveSilenceDays() {
   const input = document.getElementById('silence-days');
   const status = document.getElementById('push-status');
@@ -1956,66 +2087,6 @@ function renderGrowthChart(data) {
       <text x="${pad}" y="12" style="fill:rgb(var(--color-muted))" font-size="9" font-family="sans-serif">${min}</text>
       <text x="${(W - pad).toFixed(0)}" y="12" text-anchor="end" style="fill:rgb(var(--color-ink))" font-size="10" font-family="sans-serif" font-weight="bold">${max} words</text>
     </svg>`;
-}
-
-function renderHeatmap(data) {
-  const el = document.getElementById('heatmap');
-  if (!el) return;
-  const max = Math.max(...data.map(d => d.count), 1);
-  const weeks = Math.ceil(data.length / 7);
-  const cell = 13, gap = 3, topPad = 4;
-  const W = weeks * (cell + gap);
-  const H = 7 * (cell + gap) + topPad;
-
-  const shade = c => {
-    if (!c) return 'rgb(var(--color-line))';
-    const t = c / max;
-    if (t > 0.66) return 'rgb(var(--color-accent-dark))';
-    if (t > 0.33) return 'rgb(var(--color-accent))';
-    return 'rgb(var(--color-accent-soft))';
-  };
-
-  // data[0] is oldest; align first column's weekday offset
-  const firstDay = new Date(data[0].day + 'T12:00:00').getDay();
-  const rects = data.map((d, i) => {
-    const idx = i + firstDay;
-    const col = Math.floor(idx / 7);
-    const row = idx % 7;
-    const x = col * (cell + gap);
-    const y = topPad + row * (cell + gap);
-    return `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2.5" style="fill:${shade(d.count)}"><title>${d.day}: ${d.count}</title></rect>`;
-  }).join('');
-
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full" style="max-width:${W}px">${rects}</svg>`;
-}
-
-function renderWeeklyChart(data) {
-  const el = document.getElementById('weekly-chart');
-  if (!el) return;
-  if (!data || data.every(d => d.count === 0)) {
-    el.innerHTML = '<p class="text-muted text-sm text-center py-4">No reviews yet</p>';
-    return;
-  }
-
-  const max = Math.max(...data.map(d => d.count), 1);
-  const W = 280, H = 110, barW = 28, gap = 12;
-  const totalW = data.length * (barW + gap) - gap;
-  const sx = (W - totalW) / 2;
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-  const bars = data.map((d, i) => {
-    const x = sx + i * (barW + gap);
-    const bh = Math.max(4, ((d.count / max) * (H - 28)));
-    const y = H - 20 - bh;
-    const day = dayNames[new Date(d.day + 'T12:00:00').getDay()];
-    return `
-      <rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="4" style="fill:${d.count ? 'rgb(var(--color-accent))' : 'rgb(var(--color-line))'}"/>
-      <text x="${x + barW / 2}" y="${H - 5}" text-anchor="middle" style="fill:rgb(var(--color-muted))" font-size="9" font-family="sans-serif">${day}</text>
-      ${d.count ? `<text x="${x + barW / 2}" y="${y - 4}" text-anchor="middle" style="fill:rgb(var(--color-ink))" font-size="9" font-family="sans-serif">${d.count}</text>` : ''}
-    `;
-  }).join('');
-
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full">${bars}</svg>`;
 }
 
 /* ── Date helper (created_at stored as unix SECONDS) ── */
