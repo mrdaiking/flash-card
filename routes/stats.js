@@ -2,36 +2,27 @@ const express = require('express');
 const db = require('../db');
 const router = express.Router();
 
+// Start of the client's current day in unix seconds (tz = minutes east of UTC; the server runs in UTC).
+const dayStart = tz => Math.floor((Date.now() / 1000 + tz * 60) / 86400) * 86400 - tz * 60;
+
 router.get('/stats', (req, res) => {
   const now = Date.now();
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayStartSec = Math.floor(todayStart.getTime() / 1000);
+  const tz = tzOf(req);
+  const todayStartSec = dayStart(tz);
 
   const total_cards = db.prepare('SELECT COUNT(*) as c FROM cards').get().c;
   const due_today = db.prepare('SELECT COUNT(*) as c FROM cards WHERE next_review <= ?').get(now).c;
   const reviewed_today = db.prepare('SELECT COUNT(*) as c FROM reviews WHERE reviewed_at >= ?').get(todayStartSec).c;
   // "Mature" = interval >= 21 days (Anki's threshold): words you truly retain.
   const mature_cards = db.prepare('SELECT COUNT(*) as c FROM cards WHERE interval >= 21').get().c;
-  const words_this_week = db.prepare(
-    "SELECT COUNT(*) as c FROM cards WHERE created_at >= unixepoch('now', '-6 days', 'start of day')"
-  ).get().c;
-
-  const days = db.prepare(`
-    SELECT DISTINCT date(reviewed_at, 'unixepoch', 'localtime') as day
-    FROM reviews ORDER BY day DESC LIMIT 365
-  `).all();
+  const words_this_week = db.prepare('SELECT COUNT(*) as c FROM cards WHERE created_at >= ?').get(todayStartSec - 6 * 86400).c;
 
   // A streak still counts until today is over: if nothing is reviewed yet
   // today, count back from yesterday.
+  const studied = new Set(db.prepare('SELECT reviewed_at t FROM reviews WHERE reviewed_at >= ?').all(todayStartSec - 400 * 86400).map(r => dayOf(r.t, tz)));
+  const nowSec = Math.floor(now / 1000);
   let streak_days = 0;
-  const offset = days[0]?.day === new Date().toLocaleDateString('en-CA') ? 0 : 1;
-  for (let i = 0; i < days.length; i++) {
-    const expected = new Date();
-    expected.setDate(expected.getDate() - i - offset);
-    if (days[i].day === expected.toLocaleDateString('en-CA')) streak_days++;
-    else break;
-  }
+  for (let i = studied.has(dayOf(nowSec, tz)) ? 0 : 1; studied.has(dayOf(nowSec - i * 86400, tz)); i++) streak_days++;
 
   // Seconds per card, for "about N min": median gap between consecutive
   // reviews in the last 500, ignoring gaps over 2 min (breaks, new sessions).
@@ -45,17 +36,14 @@ router.get('/stats', (req, res) => {
 // Last-7-day recap: new cards (with their deck, for the language tag and a
 // tap-to-edit link) and how the week's reviews went.
 router.get('/recap', (req, res) => {
-  const cutoff = "unixepoch('now', '-6 days', 'start of day')";
+  const cutoff = dayStart(tzOf(req)) - 6 * 86400;
   const new_words = db.prepare(
     `SELECT c.id, c.front, c.back, c.type, c.created_at, c.deck_id, d.name AS deck_name
      FROM cards c JOIN decks d ON d.id = c.deck_id
-     WHERE c.created_at >= ${cutoff} ORDER BY c.created_at DESC`
-  ).all();
-  const r = db.prepare(`
-    SELECT COUNT(*) AS reviews, COALESCE(SUM(rating = 1), 0) AS forgot,
-      COUNT(DISTINCT date(reviewed_at, 'unixepoch', 'localtime')) AS days
-    FROM reviews WHERE reviewed_at >= ${cutoff}
-  `).get();
+     WHERE c.created_at >= ? ORDER BY c.created_at DESC`
+  ).all(cutoff);
+  const rows = db.prepare('SELECT reviewed_at t, rating r FROM reviews WHERE reviewed_at >= ?').all(cutoff);
+  const r = { reviews: rows.length, forgot: rows.filter(x => x.r === 1).length, days: new Set(rows.map(x => dayOf(x.t, tzOf(req)))).size };
   res.json({
     new_words,
     new_word_count: new_words.length,
@@ -67,27 +55,18 @@ router.get('/recap', (req, res) => {
 
 // Cumulative vocabulary size per day (for growth line chart).
 router.get('/stats/vocab-growth', (req, res) => {
+  const tz = tzOf(req);
   const days = Math.min(Number(req.query.days) || 90, 365);
-  const rows = db.prepare(`
-    SELECT date(created_at, 'unixepoch', 'localtime') as day, COUNT(*) as count
-    FROM cards GROUP BY day ORDER BY day ASC
-  `).all();
+  const byDay = new Map();
+  for (const { t } of db.prepare('SELECT created_at t FROM cards').all()) byDay.set(dayOf(t, tz), (byDay.get(dayOf(t, tz)) || 0) + 1);
 
-  // Build cumulative totals across the requested window.
+  const nowSec = Math.floor(Date.now() / 1000);
+  const first = dayOf(nowSec - (days - 1) * 86400, tz);
+  let running = 0; // cards that existed before the window
+  for (const [day, n] of byDay) if (day < first) running += n;
   const result = [];
-  let running = 0;
-  const byDay = new Map(rows.map(r => [r.day, r.count]));
-  // total that existed before the window start
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - (days - 1));
-  startDate.setHours(0, 0, 0, 0);
-  for (const r of rows) {
-    if (new Date(r.day + 'T12:00:00') < startDate) running += r.count;
-  }
   for (let i = days - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const day = d.toLocaleDateString('en-CA');
+    const day = dayOf(nowSec - i * 86400, tz);
     running += byDay.get(day) || 0;
     result.push({ day, total: running });
   }

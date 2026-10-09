@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.1 - 2026-10-09
+
+### Fixes
+- Streak, "Reviewed today", the Recap screen and the cards-added chart now cut days in the phone's timezone instead of the server's (UTC). A review at 1 am Tokyo time used to count for the previous day.
+
+### Changes
+- Service worker cache bumped to v56.
+
 ## 1.4.0 - 2026-10-09
 
 ### Features

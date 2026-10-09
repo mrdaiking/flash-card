@@ -1,4 +1,4 @@
-const CACHE = 'felix-cards-v55';
+const CACHE = 'felix-cards-v56';
 const SYNC_TAG = 'review-sync';
 // Tell open pages whether the network is reachable (drives the offline banner).
 const notifyNet = ok => self.clients.matchAll().then(cs => cs.forEach(c => c.postMessage({ net: ok })));

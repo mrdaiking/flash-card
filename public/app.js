@@ -610,7 +610,7 @@ function loading(app) {
 ════════════════════════════════════════ */
 async function renderHome(app) {
   loading(app);
-  const [decks, stats] = await Promise.all([api('/api/decks'), api('/api/stats')]);
+  const [decks, stats] = await Promise.all([api('/api/decks'), api(`/api/stats?${tzQ()}`)]);
   if (!decks) return;
 
   const totalDue = decks.reduce((s, d) => s + (d.due_count || 0), 0);
@@ -1692,8 +1692,8 @@ const tzQ = () => `tz=${-new Date().getTimezoneOffset()}`;
 async function renderStats(app) {
   loading(app);
   const [stats, growth, decks] = await Promise.all([
-    api('/api/stats'),
-    api('/api/stats/vocab-growth?days=90'),
+    api(`/api/stats?${tzQ()}`),
+    api(`/api/stats/vocab-growth?days=90&${tzQ()}`),
     api('/api/stats/decks'),
   ]);
   if (!stats) return;
@@ -2105,7 +2105,7 @@ function fmtDate(sec) {
 ════════════════════════════════════════ */
 async function renderRecap(app) {
   loading(app);
-  const [recap] = await Promise.all([api('/api/recap'), api('/api/decks')]); // decks: language tag per card
+  const [recap] = await Promise.all([api(`/api/recap?${tzQ()}`), api('/api/decks')]); // decks: language tag per card
   if (!recap) return;
 
   const start = new Date(); start.setDate(start.getDate() - 6);
