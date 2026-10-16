@@ -138,6 +138,42 @@ function insertAtCursor(textarea, text) {
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+// Toolbar / shortcut formatting via execCommand so Cmd+Z still undoes it.
+function formatField(id, kind) {
+  const ta = document.getElementById(id);
+  if (!ta) return;
+  if (ta.classList.contains('hidden')) setEditorMode(false);
+  const r = MDFormat.apply(ta.value, ta.selectionStart, ta.selectionEnd, kind);
+  ta.focus();
+  ta.setSelectionRange(r.from, r.to);
+  if (!r.text || !document.execCommand('insertText', false, r.text)) {
+    ta.setRangeText(r.text, r.from, r.to);
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  ta.setSelectionRange(r.selStart, r.selEnd);
+}
+
+const FORMAT_BTNS = [
+  ['bold', 'Bold (⌘B)', '<b>B</b>'],
+  ['italic', 'Italic (⌘I)', '<i class="font-serif">I</i>'],
+  ['highlight', 'Highlight', '<mark class="px-0.5 rounded-sm">H</mark>'],
+  ['code', 'Code', '<span class="font-mono text-[13px]">&lt;/&gt;</span>'],
+  ['math', 'Math', '<span class="font-serif italic">x²</span>'],
+  ['bullet', 'Bulleted list', '•&#8202;≡'],
+  ['number', 'Numbered list', '<span class="text-[13px]">1.</span>≡'],
+  ['quote', 'Quote', '<span class="font-serif text-[20px] leading-none">”</span>'],
+];
+// pointerdown preventDefault keeps the textarea focused (and its selection) on desktop.
+const formatBar = id => FORMAT_BTNS.map(([kind, label, icon]) =>
+  `<button type="button" onpointerdown="event.preventDefault()" onclick="formatField('${id}', '${kind}')" aria-label="${label}" title="${label}"
+    class="shrink-0 h-11 min-w-10 px-2 text-[16px] text-ink active:opacity-50">${icon}</button>`).join('');
+
+document.addEventListener('keydown', e => {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey || !e.target.matches?.('textarea.edit-field')) return;
+  const kind = { b: 'bold', i: 'italic' }[e.key.toLowerCase()];
+  if (kind && !e.shiftKey) { e.preventDefault(); formatField(e.target.id, kind); }
+});
+
 let imageUploadTargetId = null;
 function pickImageFor(textareaId) {
   imageUploadTargetId = textareaId;
@@ -1572,8 +1608,9 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
       <textarea id="edit-${key}" data-grow rows="${rows}" aria-label="${escHtml(label)}" placeholder="${escHtml(label)}"${ct.attr}
         class="edit-field card-text${key === 'example' ? '' : ct.cls} w-full bg-transparent px-4 py-3 text-[17px] leading-6 text-ink placeholder:text-muted/70 resize-none focus:outline-none">${escHtml(values[key])}</textarea>
       <div id="preview-${key}"${ct.attr} class="edit-preview card-text${key === 'example' ? '' : ct.cls} hidden px-4 py-3 min-h-12 prose-content text-[17px] leading-6 text-ink"></div>
-      <div class="pl-4 border-t border-line">
-        <button type="button" id="image-btn-edit-${key}" onclick="pickImageFor('edit-${key}')" class="h-11 text-[15px] text-accent active:opacity-60">Add image</button>
+      <div class="flex items-center gap-0.5 px-2 border-t border-line overflow-x-auto" role="toolbar" aria-label="Format ${escHtml(label)}">
+        ${formatBar(`edit-${key}`)}
+        <button type="button" id="image-btn-edit-${key}" onclick="pickImageFor('edit-${key}')" class="shrink-0 ml-auto h-11 px-2 text-[15px] text-accent active:opacity-60">Add image</button>
       </div>
     </div>`;
 
@@ -1600,7 +1637,12 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
         <input id="edit-type" list="edit-type-list" maxlength="30" value="${escHtml(cardType === 'vocab' ? '' : cardType)}" placeholder="e.g. Idiom, Pattern, Rule" aria-label="Label"
           class="${fieldCls} h-12 rounded-[14px]"/>
         ${typeDatalist('edit-type-list', siblings)}
-        <p class="mt-1.5 px-4 text-[13px] text-muted">Formatting: **bold**, *italic*. Paste a screenshot to add it as an image.</p>
+        <p class="mt-1.5 px-4 text-[13px] text-muted">Select text, then tap a format button (⌘B / ⌘I on a keyboard). Paste a screenshot to add it as an image.</p>
+        ${!isNew ? `
+          ${groupLabel('Deck')}
+          <select id="edit-deck" aria-label="Deck" class="${fieldCls} h-12 rounded-[14px]">
+            ${Object.values(deckById).map(d => `<option value="${d.id}"${d.id == deckId ? ' selected' : ''}>${escHtml(d.name)}</option>`).join('')}
+          </select>` : ''}
 
         ${!isNew ? `
           <section class="mt-8 bg-surface rounded-[14px] overflow-hidden">
@@ -1666,10 +1708,13 @@ async function saveCard(cardId, deckId, backHash) {
 
   const btn = document.getElementById('save-btn');
   btn.disabled = true;
-  const payload = JSON.stringify({ front, back, example, type });
+  const newDeck = document.getElementById('edit-deck')?.value;
+  const moved = cardId && newDeck && newDeck != deckId;
+  const payload = JSON.stringify({ front, back, example, type, ...(moved && { deck_id: Number(newDeck) }) });
   try {
     if (cardId) {
       await api(`/api/cards/${cardId}`, { method: 'PUT', body: payload });
+      if (moved) showToast(`Moved to ${deckById[newDeck]?.name || 'deck'}.`);
     } else {
       await api(`/api/decks/${deckId}/cards`, { method: 'POST', body: payload });
     }

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0 - 2026-10-16
+
+### Features
+- Move a card to another deck from the Edit Card screen (Deck picker). The card keeps its schedule and review history.
+- Format toolbar under each card field: bold, italic, highlight, code, math, bulleted / numbered list, quote. Tap again to remove. ⌘B / ⌘I on a keyboard; ⌘Z undoes.
+
+### Changes
+- Service worker cache bumped to v58.
+
 ## 1.4.1 - 2026-10-09
 
 ### Fixes

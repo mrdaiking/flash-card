@@ -106,6 +106,10 @@ Hướng dẫn viết thẻ, định dạng CSV và prompt để AI tạo thẻ:
 
 **[Đã deploy 2026-10-02] Template theo từng deck** (thay cho enum `cards.type` cố định kiểu học tiếng Anh): `decks.front_label/back_label/example_label` (NULL = Front/Back/Example) và `decks.tts_lang` (NULL = en-US như cũ, `off` = không đọc). Preset (Blank/English/Tech/Philosophy/Japanese) chỉ là hằng số trong `public/app.js` để điền sẵn form khi tạo deck hoặc ở menu ⋯ → "Card template & speech"; deck lưu giá trị cuối cùng. `cards.type` giờ là nhãn tự do (≤30 ký tự, trống = `vocab` = không hiện badge; giá trị cũ như `phrasal` vẫn hợp lệ); gợi ý nhãn lấy từ các nhãn đã dùng trong deck. Màn study đọc theo `tts_lang` của deck chứa thẻ và hiện caption trường khi deck đã đổi nhãn. Chưa làm: màn Import vẫn gọi cột Front/Back/Example, cloze, tag.
 
+**[Đã build — chưa commit/deploy] Chuyển thẻ sang deck khác:** màn Edit Card có dropdown "Deck"; `PUT /api/cards/:id` nhận thêm `deck_id` tuỳ chọn (deck phải tồn tại, không thì 400). Thẻ giữ nguyên trạng thái FSRS và lịch sử review; từ lần review kế tiếp dùng target retention của deck mới. Chưa làm: chuyển nhiều thẻ một lúc.
+
+**[Đã build — chưa commit/deploy] Thanh format trong Edit Card:** dưới mỗi ô Front/Back/Example có các nút Bold, Italic, Highlight (`==`), Code, Math (`$`), bullet, numbered, quote; ⌘B/⌘I trên bàn phím. Bấm lần nữa để bỏ format. Ghi bằng `execCommand('insertText')` nên ⌘Z vẫn undo được. Logic thuần ở `public/mdformat.js`, tự kiểm tra: `node scripts/check-mdformat.js`. Chưa làm: toolbar trong bottom-sheet thêm thẻ nhanh.
+
 ## Cài đặt mặc định & câu hỏi còn mở
 
 - **[Đã build — global, chưa theo domain] Ngưỡng "domain im lặng"**: mặc định 21 ngày, `renotify` mặc định 14 ngày để không nhắc lại mỗi ngày một khi đã bắn. Chỉnh qua `GET/PUT /api/settings/silence`. Hiện là 1 giá trị chung cho toàn app, chưa tách theo từng domain — để sau nếu thực tế dùng thấy cần.

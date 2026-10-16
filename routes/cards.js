@@ -23,13 +23,17 @@ router.post('/decks/:id/cards', (req, res) => {
 });
 
 router.put('/cards/:id', (req, res) => {
-  const { front, back, example = '', type = 'vocab' } = req.body;
+  const { front, back, example = '', type = 'vocab', deck_id = null } = req.body;
   if (!front || !back) return res.status(400).json({ error: 'Front and back required' });
+  // Optional move: FSRS state and review history stay with the card.
+  if (deck_id != null && !db.prepare('SELECT 1 FROM decks WHERE id = ?').get(deck_id)) {
+    return res.status(400).json({ error: 'Deck not found' });
+  }
   const result = db.prepare(
-    'UPDATE cards SET front = ?, back = ?, example = ?, type = ?, updated_at = unixepoch() WHERE id = ?'
-  ).run(front, back, example, normType(type), req.params.id);
+    'UPDATE cards SET front = ?, back = ?, example = ?, type = ?, deck_id = COALESCE(?, deck_id), updated_at = unixepoch() WHERE id = ?'
+  ).run(front, back, example, normType(type), deck_id, req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Card not found' });
-  res.json({ id: Number(req.params.id), front, back, example, type: normType(type) });
+  res.json({ id: Number(req.params.id), front, back, example, type: normType(type), deck_id: deck_id ?? undefined });
 });
 
 router.delete('/cards/:id', (req, res) => {
