@@ -1316,6 +1316,10 @@ function drawStudyCard() {
   const backSpeak = card.example ? `${card.back}. ${card.example}` : card.back;
   const hasFurigana = /<ruby>/.test(md(`${card.front}\n${card.back}\n${card.example || ''}`));
   const label = card.type && card.type !== 'vocab' ? ({ phrasal: 'Phrasal verb' }[card.type] || card.type) : '';
+  const ygQuery = stripHtml(md(card.front)).trim();
+  const ygBtn = YG_LANGS[info.tts_lang] && ygQuery && ygQuery.length <= 80 && !ygQuery.includes('\n') ? `
+    <button onclick="event.stopPropagation(); showYouglish(${escHtml(JSON.stringify(ygQuery))}, '${info.tts_lang}')" aria-label="Hear it in real videos (YouGlish)"
+      class="h-8 px-2.5 rounded-full text-[13px] font-medium bg-base text-muted active:opacity-60">YouGlish</button>` : '';
   const speakBtn = (text, extra = '') => speech ? `
     <button onclick="event.stopPropagation(); speak(${escHtml(JSON.stringify(text))}, '${lang}')" aria-label="Play audio"
       class="w-11 h-11 -mr-2.5 flex-shrink-0 flex items-center justify-center text-muted active:opacity-50 ${extra}">${speakerOnSVG}</button>` : '';
@@ -1335,7 +1339,7 @@ function drawStudyCard() {
             ${escHtml(deckById[card.deck_id]?.name || '')}${label ? ` · ${escHtml(label)}` : ''}
             <span id="study-star" class="text-rate-hard ${card.is_favorite ? '' : 'hidden'}">${studyIcon.star}</span>
           </span>
-          <span class="flex items-center gap-1">${hasFurigana ? furiganaBtn() : ''}${speakBtn(card.front)}</span>
+          <span class="flex items-center gap-1">${hasFurigana ? furiganaBtn() : ''}${ygBtn}${speakBtn(card.front)}</span>
         </div>
         ${card.practice ? `<p class="mt-3 inline-block text-[13px] font-medium text-rate-again bg-accent-tint px-2.5 py-1 rounded-full">Practice round · won’t change its schedule</p>` : ''}
         <div class="mt-8 prose-content card-text${ct.cls} text-[28px] leading-[1.45] font-medium text-ink"${ct.attr}>${md(card.front)}</div>
@@ -1378,11 +1382,82 @@ function drawStudyCard() {
         <div class="px-4 pt-2"><button onclick="hideStudyMenu()" class="w-full h-[52px] text-[17px] font-semibold text-accent active:opacity-60">Done</button></div>
       </div>
     </div>
+    <div id="yg-sheet" class="sheet hidden fixed inset-0 z-50 bg-black/40 flex items-end" onclick="hideYouglish(event)">
+      <div class="w-full max-h-[90vh] overflow-y-auto bg-surface rounded-t-[14px]" style="padding-bottom: calc(env(safe-area-inset-bottom) + 8px)" onclick="event.stopPropagation()">
+        <div class="mx-auto mt-2 mb-1 w-9 h-[5px] rounded-full bg-line"></div>
+        <div class="flex items-center justify-between px-4 h-11">
+          <span class="text-[15px] font-semibold text-ink">Real speakers · YouGlish</span>
+          <button onclick="hideYouglish()" class="h-11 pl-3 text-[17px] font-semibold text-accent active:opacity-60">Done</button>
+        </div>
+        <div id="yg-status" class="px-4 pb-3 text-[13px] text-muted hidden"></div>
+        <div class="px-3 flex justify-center"><div id="yg-widget"></div></div>
+      </div>
+    </div>
     ${undoToastHTML()}
   `;
 
   setupSwipe();
   if (ttsMode === 'both' || ttsMode === 'front') speak(card.front, lang);
+}
+
+// YouGlish: the word spoken in real YouTube clips, via their embeddable widget
+// (https://youglish.com/api/doc/js-api). Loaded lazily on first use, so the app
+// never touches youglish.com/YouTube unless asked. Needs the network.
+// Personal, non-commercial use; their policy asks commercial/mobile-app use to get permission.
+const YG_LANGS = { 'en-US': ['english', 'us'], 'en-GB': ['english', 'uk'], 'ja-JP': ['japanese'], 'zh-CN': ['chinese', 'cn'],
+  'ko-KR': ['korean'], 'fr-FR': ['french'], 'de-DE': ['german'], 'es-ES': ['spanish'], 'vi-VN': ['vietnamese'] };
+let ygLoader = null, ygWidget = null;
+function loadYouglish() {
+  if (window.YG?.Widget) return Promise.resolve();
+  return (ygLoader ||= new Promise((resolve, reject) => {
+    window.onYouglishAPIReady = resolve;
+    const s = document.createElement('script');
+    s.src = 'https://youglish.com/public/emb/widget.js';
+    s.onerror = () => { ygLoader = null; s.remove(); reject(new Error('load failed')); };
+    document.head.appendChild(s);
+  }));
+}
+
+async function showYouglish(query, ttsLang) {
+  const [lang, accent] = YG_LANGS[ttsLang] || [];
+  if (!lang) return;
+  if (!navigator.onLine) { showToast('YouGlish needs a connection.'); return; }
+  window.speechSynthesis?.cancel();
+  const status = document.getElementById('yg-status');
+  const setStatus = msg => { status.textContent = msg || ''; status.classList.toggle('hidden', !msg); };
+  setStatus('Loading…');
+  showModal('yg-sheet');
+  try {
+    await loadYouglish();
+  } catch {
+    setStatus('Couldn’t reach YouGlish. Try again when you’re online.');
+    return;
+  }
+  const sheet = document.getElementById('yg-sheet');
+  if (!sheet || sheet.classList.contains('hidden')) return; // closed while loading
+  const css = getComputedStyle(sheet.firstElementChild), ink = getComputedStyle(document.body).color;
+  const holder = document.getElementById('yg-widget');
+  holder.innerHTML = '';
+  ygWidget = new YG.Widget('yg-widget', {
+    width: Math.min(window.innerWidth - 24, 560),
+    components: 1 + 2 + 8 + 16 + 64, // search, accent, caption, speed, controls
+    backgroundColor: css.backgroundColor, captionColor: ink, textColor: ink, titleColor: ink,
+    captionSize: 22,
+    events: {
+      onFetchDone: e => setStatus(e.totalResult === 0 ? `No clips found for “${query}”.` : ''),
+      onError: () => setStatus('YouGlish had a problem. Try again.'),
+    },
+  });
+  ygWidget.fetch(query, lang, accent);
+}
+
+function hideYouglish(e) {
+  if (e && e.target !== document.getElementById('yg-sheet')) return;
+  try { ygWidget?.pause(); } catch {}
+  ygWidget = null;
+  hideModalEl('yg-sheet');
+  // Remove the player after the slide-out so no audio keeps playing behind the card.
+  setTimeout(() => { const h = document.getElementById('yg-widget'); if (h) h.innerHTML = ''; }, 220);
 }
 
 // Study-screen furigana switch: hides readings (keeping their space so text doesn't jump)
