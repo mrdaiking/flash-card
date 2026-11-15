@@ -129,6 +129,9 @@
     .prose-content em { font-style: italic; }
     .prose-content del { opacity: 0.6; }
     .prose-content mark { background: rgb(255 208 0 / 0.4); color: inherit; padding: 0 0.15em; border-radius: 0.2em; }
+    /* Search screen: own ✕ button + highlight, so hide the browser's clear button. */
+    #search-q::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+    #search-results mark { background: rgb(255 208 0 / 0.4); color: inherit; padding: 0 0.15em; border-radius: 0.2em; }
     .prose-content a { color: rgb(var(--color-accent)); text-decoration: underline; }
     .prose-content blockquote { border-left: 3px solid rgb(var(--color-line)); padding-left: 0.75em; margin: 0.4em 0; color: rgb(var(--color-muted)); }
     .prose-content hr { border: 0; border-top: 1px solid rgb(var(--color-line)); margin: 0.75em 0; }

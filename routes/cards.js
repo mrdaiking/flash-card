@@ -8,6 +8,42 @@ router.get('/decks/:id/cards', (req, res) => {
   res.json(cards);
 });
 
+// Global card search. Plain substring match (instr) over front/back/example:
+// FTS5's tokenizer can't segment Japanese, and the dataset is small. Pasted
+// images live in the text as base64 data URIs, so they're replaced with a
+// placeholder before matching and before sending (no matches inside blobs).
+const IMG_RE = /!\[[^\]]*\]\(data:[^)]*\)/g;
+const stripImgs = s => String(s ?? '').replace(IMG_RE, '[image]');
+
+router.get('/cards/search', (req, res) => {
+  const q = String(req.query.q ?? '').trim().slice(0, 100).toLowerCase();
+  if (!q) return res.json([]);
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+  const deck = parseInt(req.query.deck, 10);
+  const where = [];
+  const args = [q, q, q];
+  if (Number.isInteger(deck)) { where.push('AND c.deck_id = ?'); args.push(deck); }
+  if (req.query.favorites === '1') where.push('AND c.is_favorite = 1');
+  args.push(q);
+  // Over-fetch: SQL may match inside image blobs; those are dropped below.
+  const rows = db.prepare(`
+    SELECT c.id, c.deck_id, d.name AS deck_name, c.front, c.back, c.example, c.is_favorite
+    FROM cards c JOIN decks d ON d.id = c.deck_id
+    WHERE (instr(lower(c.front), ?) > 0 OR instr(lower(c.back), ?) > 0 OR instr(lower(c.example), ?) > 0)
+    ${where.join(' ')}
+    ORDER BY (instr(lower(c.front), ?) > 0) DESC, c.updated_at DESC
+    LIMIT 500
+  `).all(...args);
+  const out = [];
+  for (const r of rows) {
+    const c = { ...r, front: stripImgs(r.front), back: stripImgs(r.back), example: stripImgs(r.example) };
+    if (![c.front, c.back, c.example].some(t => t.toLowerCase().includes(q))) continue;
+    out.push(c);
+    if (out.length >= limit) break;
+  }
+  res.json(out);
+});
+
 // Free-text label per card (legacy values like 'phrasal' stay valid; 'vocab' = no label).
 const normType = t => (typeof t === 'string' && t.trim() ? t.trim().slice(0, 30) : 'vocab');
 

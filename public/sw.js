@@ -1,4 +1,4 @@
-const CACHE = 'felix-cards-v61';
+const CACHE = 'felix-cards-v62';
 const SYNC_TAG = 'review-sync';
 // Tell open pages whether the network is reachable (drives the offline banner).
 const notifyNet = ok => self.clients.matchAll().then(cs => cs.forEach(c => c.postMessage({ net: ok })));
@@ -140,7 +140,7 @@ self.addEventListener('fetch', e => {
     e.respondWith(
       fetch(request).then(res => {
         notifyNet(true);
-        if (res.ok) putInCache(e, request, res);
+        if (res.ok && url.pathname !== '/api/cards/search') putInCache(e, request, res);
         return res;
       }).catch(() => { notifyNet(false); return caches.match(request); })
     );

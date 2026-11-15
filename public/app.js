@@ -442,6 +442,9 @@ function router() {
     setActiveNav('');
     const params = new URLSearchParams(hash.split('?')[1] || '');
     renderEditCard(app, m[1], params.get('deck'), params.get('ret'));
+  } else if (hash === '#/search' || hash.startsWith('#/search?')) {
+    setActiveNav('');
+    renderSearch(app, new URLSearchParams(hash.split('?')[1] || ''));
   } else if (hash === '#/recap') {
     setActiveNav('stats');
     renderRecap(app);
@@ -562,6 +565,7 @@ const ICON = {
   chevronLeft: '<svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
   chevronRight: '<svg class="w-5 h-5 text-muted/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
   plus: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  search: '<svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
   more: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
 };
 
@@ -668,7 +672,10 @@ async function renderHome(app) {
       <div class="flex items-center justify-between">
         <p class="px-1 text-[15px] text-muted">${dateLine}</p>
         <!-- New deck lives at the top (iOS nav-bar spot), not under the deck list -->
-        <button onclick="showNewDeckModal()" aria-label="New deck" class="w-11 h-11 -mr-2 flex items-center justify-center text-accent active:opacity-60">${ICON.plus}</button>
+        <div class="flex items-center">
+          <button onclick="navigate('#/search')" aria-label="Search cards" class="w-11 h-11 flex items-center justify-center text-accent active:opacity-60">${ICON.search}</button>
+          <button onclick="showNewDeckModal()" aria-label="New deck" class="w-11 h-11 -mr-2 flex items-center justify-center text-accent active:opacity-60">${ICON.plus}</button>
+        </div>
       </div>
       <h1 class="px-1 text-[34px] leading-[41px] font-bold text-ink font-heading">Today</h1>
 
@@ -750,6 +757,127 @@ async function createDeck() {
   await api('/api/decks', { method: 'POST', body: JSON.stringify({ name, ...template }) });
   hideNewDeckModal();
   renderHome(document.getElementById('app'));
+}
+
+/* ════════════════════════════════════════
+   Screen: Search
+════════════════════════════════════════ */
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+// Escape `text`, wrapping case-insensitive matches of `q` in <mark>.
+function highlight(text, q) {
+  if (!q) return escHtml(text);
+  const lower = text.toLowerCase();
+  let out = '', i = 0, j;
+  while ((j = lower.indexOf(q, i)) !== -1) {
+    out += escHtml(text.slice(i, j)) + '<mark>' + escHtml(text.slice(j, j + q.length)) + '</mark>';
+    i = j + q.length;
+  }
+  return out + escHtml(text.slice(i));
+}
+
+// Text to show for one field: the rendered preview, unless the match only
+// exists in the raw source (e.g. a furigana reading) — then show the raw text.
+function searchLine(raw, q) {
+  const preview = previewParts(raw).text;
+  if (preview.toLowerCase().includes(q)) return { text: preview, hit: true };
+  const flat = String(raw || '').replace(/\s+/g, ' ').trim();
+  return flat.toLowerCase().includes(q) ? { text: flat, hit: true } : { text: preview || flat, hit: false };
+}
+
+async function renderSearch(app, params) {
+  let q = (params.get('q') || '').trim();
+  let deck = params.get('deck') || '';
+  let favs = params.get('fav') === '1';
+  let seq = 0;
+  const decks = (await api('/api/decks')) || [];
+
+  app.innerHTML = `
+    <div class="px-4 pt-1 pb-28">
+      <button onclick="navigate('#/')" class="h-11 -ml-2 pr-2 flex items-center text-[17px] text-accent active:opacity-60">${ICON.chevronLeft}Today</button>
+      <h1 class="px-1 text-[34px] leading-[41px] font-bold text-ink font-heading">Search</h1>
+      <div class="sticky top-0 z-20 -mx-4 px-4 pt-3 pb-2 bg-paper/95 backdrop-blur">
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none">${ICON.search}</span>
+          <input id="search-q" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false"
+            value="${escHtml(q)}" placeholder="Word, kanji, reading…" class="${fieldCls} h-11 pl-11 pr-11 text-[16px] [&::-webkit-search-cancel-button]:hidden">
+          <button id="search-clear" aria-label="Clear" class="${q ? '' : 'hidden'} absolute right-0 top-0 w-11 h-11 flex items-center justify-center text-muted active:opacity-60">✕</button>
+        </div>
+        <div class="mt-2 flex gap-2">
+          <select id="search-deck" aria-label="Deck" class="h-9 max-w-[60%] rounded-full bg-surface px-3 text-[15px] text-ink focus:outline-none">
+            <option value="">All decks</option>
+            ${decks.map(d => `<option value="${d.id}" ${String(d.id) === deck ? 'selected' : ''}>${escHtml(d.name)}</option>`).join('')}
+          </select>
+          <button id="search-fav" aria-pressed="${favs}" class="h-9 px-3 rounded-full text-[15px] active:opacity-60"></button>
+        </div>
+      </div>
+      <div id="search-results"></div>
+    </div>`;
+
+  const input = document.getElementById('search-q');
+  const box = document.getElementById('search-results');
+  const favBtn = document.getElementById('search-fav');
+  const paintFav = () => {
+    favBtn.setAttribute('aria-pressed', favs);
+    favBtn.className = `h-9 px-3 rounded-full text-[15px] active:opacity-60 ${favs ? 'bg-accent text-on-accent' : 'bg-surface text-ink'}`;
+    favBtn.textContent = '★ Favorites';
+  };
+  paintFav();
+
+  const hashNow = () => {
+    const p = new URLSearchParams();
+    if (q) p.set('q', q);
+    if (deck) p.set('deck', deck);
+    if (favs) p.set('fav', '1');
+    return '#/search' + (p.toString() ? `?${p}` : '');
+  };
+  const hint = t => { box.innerHTML = `<p class="mt-8 px-1 text-[15px] text-muted">${t}</p>`; };
+
+  async function run() {
+    history.replaceState(null, '', hashNow());
+    document.getElementById('search-clear').classList.toggle('hidden', !q);
+    if (!q) { seq++; hint('Search front, back, example and readings.'); return; }
+    const mine = ++seq;
+    const qs = new URLSearchParams({ q });
+    if (deck) qs.set('deck', deck);
+    if (favs) qs.set('favorites', '1');
+    let rows;
+    try { rows = await api(`/api/cards/search?${qs}`); }
+    catch { if (mine === seq) showToast('Search needs a connection'); return; }
+    if (mine !== seq || !Array.isArray(rows)) return; // stale response
+    if (!rows.length) { hint(`No cards match “${escHtml(q)}”.`); return; }
+    const ql = q.toLowerCase();
+    const ret = encodeURIComponent(hashNow());
+    box.innerHTML = `${groupLabel(`${rows.length}${rows.length >= 50 ? '+' : ''} result${rows.length === 1 ? '' : 's'}`)}
+      <section class="bg-surface rounded-[14px] overflow-hidden">
+        ${rows.map((c, i) => {
+          const f = searchLine(c.front, ql);
+          const b = searchLine(c.back, ql);
+          const e = searchLine(c.example, ql);
+          const second = !f.hit && !b.hit && e.hit ? e : b;
+          const ct = cardText(deckInfo(c.deck_id));
+          return `<div class="pl-4"><button onclick="navigate('#/cards/${c.id}/edit?deck=${c.deck_id}&ret=${ret}')"
+            class="w-full min-h-[64px] pr-4 py-2 flex items-center gap-2 text-left active:opacity-60 ${i < rows.length - 1 ? 'border-b border-line' : ''}">
+            <span class="min-w-0 flex-1"${ct.attr}>
+              <span class="block truncate text-[17px] leading-[22px] text-ink">${highlight(f.text, ql)}</span>
+              <span class="block truncate text-[15px] leading-5 text-muted">${highlight(second.text, ql)}</span>
+              <span class="block truncate text-[12px] leading-4 text-muted/70">${escHtml(c.deck_name)}</span>
+            </span>
+            ${c.is_favorite ? `<span class="text-rate-hard flex-shrink-0">${starSVG(true)}</span>` : ''}
+          </button></div>`;
+        }).join('')}
+      </section>`;
+  }
+
+  const runSoon = debounce(run, 200);
+  input.addEventListener('input', () => { q = input.value.trim(); runSoon(); });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
+  document.getElementById('search-clear').onclick = () => { input.value = ''; q = ''; run(); input.focus(); };
+  document.getElementById('search-deck').onchange = e => { deck = e.target.value; run(); };
+  favBtn.onclick = () => { favs = !favs; paintFav(); run(); };
+
+  run();
+  if (!q) input.focus();
 }
 
 /* ════════════════════════════════════════
@@ -1682,7 +1810,7 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
     example: card?.example || draft?.example || '',
   };
   const cardType = card?.type || draft?.type || 'vocab';
-  const backHash = ret?.startsWith('#/study/') || ret === '#/recap' ? ret : deckId ? `#/decks/${deckId}` : '#/';
+  const backHash = ret?.startsWith('#/study/') || ret?.startsWith('#/search') || ret === '#/recap' ? ret : deckId ? `#/decks/${deckId}` : '#/';
 
   const ct = cardText(info);
   const field = (key, label, rows, optional) => `

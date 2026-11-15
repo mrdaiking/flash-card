@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.0 - 2026-11-15
+
+### Features
+- Card search: 🔍 button on Today opens a search screen. Substring match over front, back, example and furigana readings (kanji, kana, ASCII; case-insensitive), results highlighted, filter by deck or favorites. The query stays in the URL, so Back from the card editor returns to the same search.
+- `GET /api/cards/search` endpoint (`q`, `deck`, `favorites`, `limit`). Pasted base64 images are ignored for matching and stripped from results.
+
+### Changes
+- Search responses are not cached by the service worker (cache bumped to v62).
+- `scripts/check-search.js` self-check.
+
 ## 1.6.0 - 2026-11-15
 
 ### Features
