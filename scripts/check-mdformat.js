@@ -34,4 +34,11 @@ assert.strictEqual(run('[q]', 'quote'), '[> q]');
 assert.strictEqual(run('> [q]', 'quote'), '[q]');
 assert.strictEqual(run('[]', 'bullet'), '- []');
 
+// Furigana: selection / kanji run before caret → 漢字[caret]; toggles off when [..] follows
+const fg = (v, s, e) => { const r = apply(v, s, e, 'furigana'); return [v.slice(0, r.from) + r.text + v.slice(r.to), r.selStart]; };
+assert.deepStrictEqual(fg('今日は本', 0, 2), ['今日[]は本', 3]);
+assert.deepStrictEqual(fg('私は本', 3, 3), ['私は本[]', 4]);
+assert.deepStrictEqual(fg('ab', 1, 1), ['a[]b', 2]);
+assert.deepStrictEqual(fg('本[ほん]です', 0, 1), ['本です', 0]);
+
 console.log('check-mdformat: ok');

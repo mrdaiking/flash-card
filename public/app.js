@@ -157,6 +157,7 @@ const FORMAT_BTNS = [
   ['bold', 'Bold (⌘B)', '<b>B</b>'],
   ['italic', 'Italic (⌘I)', '<i class="font-serif">I</i>'],
   ['highlight', 'Highlight', '<mark class="px-0.5 rounded-sm">H</mark>'],
+  ['furigana', 'Furigana: 漢字[かんじ]', '<span class="text-[13px]">ふ<span class="text-muted">[]</span></span>'],
   ['code', 'Code', '<span class="font-mono text-[13px]">&lt;/&gt;</span>'],
   ['math', 'Math', '<span class="font-serif italic">x²</span>'],
   ['bullet', 'Bulleted list', '•&#8202;≡'],
@@ -164,8 +165,8 @@ const FORMAT_BTNS = [
   ['quote', 'Quote', '<span class="font-serif text-[20px] leading-none">”</span>'],
 ];
 // pointerdown preventDefault keeps the textarea focused (and its selection) on desktop.
-const formatBar = id => FORMAT_BTNS.map(([kind, label, icon]) =>
-  `<button type="button" onpointerdown="event.preventDefault()" onclick="formatField('${id}', '${kind}')" aria-label="${label}" title="${label}"
+const formatBar = (id, call = kind => `formatField('${id}', '${kind}')`) => FORMAT_BTNS.map(([kind, label, icon]) =>
+  `<button type="button" onpointerdown="event.preventDefault()" onclick="${call(kind)}" aria-label="${label}" title="${label}"
     class="shrink-0 h-11 min-w-10 px-2 text-[16px] text-ink active:opacity-50">${icon}</button>`).join('');
 
 document.addEventListener('keydown', e => {
@@ -829,6 +830,9 @@ async function renderDeckDetail(app, deckId) {
         <textarea id="qa-example"${ct.attr} data-grow rows="2" placeholder="${escHtml(deck.example_label)} (optional)" class="${fieldCls} py-3 resize-none"></textarea>
         <input id="qa-type" list="type-list" maxlength="30" placeholder="Label (optional)" class="${fieldCls} h-11"/>
         ${typeList}
+        <div class="flex items-center gap-0.5 px-1 bg-base rounded-[10px] overflow-x-auto" role="toolbar" aria-label="Format">
+          ${formatBar('', kind => `formatQa('${kind}')`)}
+        </div>
       </div>
       <button onclick="expandQuickAdd(${deckId})" class="mt-1 h-11 px-1 text-[15px] text-accent active:opacity-60">More options and images</button>
     `, { cancel: `closeQuickAdd(${deckId})`, save: `saveQuickAdd(${deckId})`, saveLabel: 'Add', saveId: 'qa-save' })}
@@ -923,6 +927,10 @@ async function saveTemplate(deckId) {
 // Quick-add sheet: stays open between saves; the list refreshes only when it
 // closes (re-rendering the page per save would wipe the open sheet).
 let quickAddCount = 0;
+// The sheet's single toolbar formats whichever textarea was focused last.
+let qaField = 'qa-front';
+document.addEventListener('focusin', e => { if (e.target.matches?.('textarea[id^="qa-"]')) qaField = e.target.id; });
+const formatQa = kind => formatField(qaField, kind);
 function showQuickAdd() {
   quickAddCount = 0;
   document.getElementById('qa-count').textContent = '';

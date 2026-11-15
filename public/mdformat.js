@@ -50,7 +50,19 @@
     return { from, to, text, selStart: s === e ? caret : from, selEnd: caret };
   }
 
+  // Furigana: 漢字 → 漢字[|] with the caret inside the brackets, ready for the reading.
+  // No selection → grabs the kanji run before the caret. Already followed by [..] → removes it.
+  const HAN = /[\p{Script=Han}々〆ヶ]/u;
+  function furigana(v, s, e) {
+    if (s === e) while (s > 0 && HAN.test(v[s - 1])) s--;
+    const t = v.slice(s, e);
+    const tail = /^\[[^\]\n]*\]/.exec(v.slice(e));
+    if (t && tail) return { from: s, to: e + tail[0].length, text: t, selStart: s, selEnd: e };
+    return { from: s, to: e, text: `${t}[]`, selStart: s + t.length + 1, selEnd: s + t.length + 1 };
+  }
+
   function apply(v, s, e, kind) {
+    if (kind === 'furigana') return furigana(v, s, e);
     return WRAP[kind] ? wrap(v, s, e, WRAP[kind]) : prefixLines(v, s, e, kind);
   }
 

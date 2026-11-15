@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.0 - 2026-11-15
+
+### Features
+- Furigana button (ふ[]) in the format toolbar: select kanji (or leave the caret after them) and tap to get `漢字[]` with the caret inside the brackets. Tap again to remove the reading.
+- Format toolbar in the quick-add sheet (the + button), applied to whichever field was focused last.
+- YouGlish widget on study cards to hear real-video pronunciation examples.
+
+### Changes
+- Deploy script for the two-instance setup (`scripts/deploy.sh`).
+- Service worker cache bumped to v61.
+
 ## 1.5.0 - 2026-10-16
 
 ### Features
