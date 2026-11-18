@@ -102,6 +102,11 @@
     .prose-content { max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
     /* Tall photos must not blow up the card: cap height, keep aspect ratio. */
     .prose-content img { max-width: 100%; max-height: 45vh; width: auto; height: auto; object-fit: contain; margin: 0 auto; border-radius: 0.5rem; }
+    .prose-content img { cursor: zoom-in; }
+    /* 2+ images in one paragraph = thumbnail grid (tap to open full screen). */
+    .prose-content p:has(img ~ img) { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+    .prose-content p:has(img ~ img) br { display: none; }
+    .prose-content p:has(img ~ img) img { flex: 1 1 calc(33% - 0.375rem); width: 0; min-width: 5rem; height: 8rem; max-height: none; object-fit: cover; margin: 0; }
     .prose-content table { display: block; max-width: 100%; overflow-x: auto; }
     .prose-content pre { background: rgb(var(--color-base)); padding: 0.75rem; border-radius: 0.5rem; overflow-x: auto; margin: 0.5rem 0; }
     .prose-content code { font-size: 0.85em; background: rgb(var(--color-base)); padding: 0.1em 0.3em; border-radius: 0.25rem; }

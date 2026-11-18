@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.8.0 - 2026-11-18
+
+### Features
+- Several images per card: "Add images" picks multiple files at once. Two or more adjacent images render as a thumbnail grid; tap any card image for a full-screen lightbox (tap again to zoom).
+- Screenshots and diagrams (PNG) stay PNG up to 1600px, falling back to JPEG above 500KB. Other images stay JPEG, now on a white background.
+- Deck list: swipe right to delete (still confirms), swipe left to edit.
+
+### Changes
+- Existing cards open in Preview by default; `?edit=1` opens Edit directly (study pencil and swipe-left use it).
+- Service worker cache bumped to v63.
+
 ## 1.7.0 - 2026-11-15
 
 ### Features

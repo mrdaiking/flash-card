@@ -110,6 +110,10 @@ Hướng dẫn viết thẻ, định dạng CSV và prompt để AI tạo thẻ:
 
 **[Đã build — chưa commit/deploy] Thanh format trong Edit Card:** dưới mỗi ô Front/Back/Example có các nút Bold, Italic, Highlight (`==`), Code, Math (`$`), bullet, numbered, quote; ⌘B/⌘I trên bàn phím. Bấm lần nữa để bỏ format. Ghi bằng `execCommand('insertText')` nên ⌘Z vẫn undo được. Logic thuần ở `public/mdformat.js`, tự kiểm tra: `node scripts/check-mdformat.js`. Chưa làm: toolbar trong bottom-sheet thêm thẻ nhanh.
 
+**[Đã build — chưa commit/deploy] Nhiều ảnh trong một thẻ (1.8.0):** nút "Add images" chọn được nhiều ảnh một lúc; chèn thành một đoạn markdown riêng (các ảnh liền nhau). Hai ảnh liền nhau trở lên trong cùng một đoạn tự hiện thành lưới thumbnail (CSS `p:has(img ~ img)` trong `public/index.html`). Bấm ảnh bất kỳ trong thẻ → lightbox toàn màn hình (`openLightbox` trong `app.js`), bấm ảnh lần nữa để zoom 250% và cuộn. **Quyết định:** PNG (screenshot/diagram từ ChatGPT) giữ PNG, tối đa 1600px, nếu data URL >500KB thì rơi về JPEG; các định dạng khác vẫn JPEG q0.82 tối đa 1000px. Vẫn nhúng base64 trong DB, nên một thẻ bị chặn bởi `express.json` 8mb (~16 PNG). Chưa làm: Mermaid (vẽ sơ đồ bằng code), pinch-zoom thật, kéo đổi thứ tự ảnh.
+
+**[Đã build — chưa commit/deploy] Mở thẻ có sẵn:** trình sửa mặc định ở chế độ Preview (đọc trước, tab Edit để sửa) ở mọi nơi mở thẻ (Deck, Search, Recap); thêm `&edit=1` để mở thẳng chế độ Edit (nút bút chì trong màn study và vuốt trái dùng cái này). Thẻ mới luôn ở chế độ Edit. Danh sách thẻ trong deck: vuốt phải = Delete (vẫn hỏi xác nhận), vuốt trái = Edit, xử lý ở `initRowSwipe` trong `app.js` (chỉ cảm ứng, chưa có chuột).
+
 ## Cài đặt mặc định & câu hỏi còn mở
 
 - **[Đã build — global, chưa theo domain] Ngưỡng "domain im lặng"**: mặc định 21 ngày, `renotify` mặc định 14 ngày để không nhắc lại mỗi ngày một khi đã bắn. Chỉnh qua `GET/PUT /api/settings/silence`. Hiện là 1 giá trị chung cho toàn app, chưa tách theo từng domain — để sau nếu thực tế dùng thấy cần.

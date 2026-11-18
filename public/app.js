@@ -114,6 +114,9 @@ const md = text => {
 
 /* ── Card images: compress client-side, embed as base64 markdown ── */
 function compressImageToDataUrl(file, maxDim = 1000, quality = 0.82) {
+  // PNG = screenshots/diagrams: keep text sharp (bigger, lossless) unless the result gets heavy.
+  const png = file.type === 'image/png';
+  if (png) maxDim = 1600;
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -121,14 +124,25 @@ function compressImageToDataUrl(file, maxDim = 1000, quality = 0.82) {
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(img.src);
+      if (png) {
+        const url = canvas.toDataURL('image/png');
+        if (url.length <= 500_000) return resolve(url); // ponytail: ~16 PNGs fit express's 8mb body limit
+      }
+      ctx.globalCompositeOperation = 'destination-over'; // white behind transparency, JPEG has no alpha
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       resolve(canvas.toDataURL('image/jpeg', quality));
     };
     img.onerror = reject;
     img.src = URL.createObjectURL(file);
   });
 }
+
+// Own paragraph, so 2+ images in one block render as a thumbnail grid (see .prose-content p:has(img ~ img)).
+const imageBlock = urls => '\n\n' + urls.map(u => `![](${u})`).join('\n') + '\n\n';
 
 function insertAtCursor(textarea, text) {
   const start = textarea.selectionStart ?? textarea.value.length;
@@ -191,7 +205,7 @@ function wirePasteImage(textarea) {
     if (imageItem) {
       e.preventDefault();
       const dataUrl = await compressImageToDataUrl(imageItem.getAsFile());
-      insertAtCursor(textarea, `\n![](${dataUrl})\n`);
+      insertAtCursor(textarea, imageBlock([dataUrl]));
       return;
     }
     const text = e.clipboardData?.getData('text/plain')?.trim();
@@ -201,6 +215,36 @@ function wirePasteImage(textarea) {
     }
   });
 }
+
+/* ── Image lightbox: tap any card image to view it full screen; tap it again to zoom ── */
+function openLightbox(src) {
+  const o = document.createElement('div');
+  o.style.cssText = 'position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.92);overflow:auto;display:flex;';
+  o.innerHTML = `<img src="${escHtml(src)}" alt="" style="margin:auto;max-width:100vw;max-height:100vh;cursor:zoom-in">
+    <button aria-label="Close" style="position:fixed;top:max(env(safe-area-inset-top),12px);right:12px;width:44px;height:44px;border-radius:22px;background:rgba(255,255,255,.2);color:#fff;font-size:22px">✕</button>`;
+  const close = () => { o.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  o.addEventListener('click', e => {
+    const img = o.firstElementChild;
+    if (e.target === img) {
+      const zoomed = img.style.maxWidth === 'none';
+      img.style.maxWidth = zoomed ? '100vw' : 'none';
+      img.style.maxHeight = zoomed ? '100vh' : 'none';
+      img.style.width = zoomed ? '' : '250vw';
+      img.style.cursor = zoomed ? 'zoom-in' : 'zoom-out';
+    } else close();
+  });
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(o);
+}
+// Capture phase so a tap on a card image never also flips/advances the card underneath.
+document.addEventListener('click', e => {
+  const img = e.target.closest?.('.prose-content img');
+  if (!img) return;
+  e.preventDefault();
+  e.stopPropagation();
+  openLightbox(img.currentSrc || img.src);
+}, true);
 
 /* ── Text-to-Speech ── */
 const speakerOnSVG = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5L6 9H2v6h4l5 4V5z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>`;
@@ -441,7 +485,7 @@ function router() {
   } else if ((m = hash.match(/^#\/cards\/(\d+)\/edit/))) {
     setActiveNav('');
     const params = new URLSearchParams(hash.split('?')[1] || '');
-    renderEditCard(app, m[1], params.get('deck'), params.get('ret'));
+    renderEditCard(app, m[1], params.get('deck'), params.get('ret'), params.get('edit') !== '1');
   } else if (hash === '#/search' || hash.startsWith('#/search?')) {
     setActiveNav('');
     renderSearch(app, new URLSearchParams(hash.split('?')[1] || ''));
@@ -593,6 +637,42 @@ const autoGrow = ta => {
   ta.style.height = 'auto';
   ta.style.height = Math.min(ta.scrollHeight + 2, window.innerHeight * 0.55) + 'px';
 };
+// Deck list rows: swipe right = delete (asks to confirm), swipe left = edit. Tap opens the preview.
+(function initRowSwipe() {
+  const LIMIT = 96, TRIGGER = 80;
+  let row = null, fg = null, x0 = 0, y0 = 0, dx = 0, lock = null, swipedAt = 0;
+  document.addEventListener('touchstart', e => {
+    row = e.touches.length === 1 ? e.target.closest?.('.swipe-row') : null;
+    if (!row) return;
+    fg = row.querySelector('.swipe-fg');
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; lock = null;
+    fg.style.transition = 'none';
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!row) return;
+    const mx = e.touches[0].clientX - x0, my = e.touches[0].clientY - y0;
+    if (!lock && (Math.abs(mx) > 8 || Math.abs(my) > 8)) lock = Math.abs(mx) > Math.abs(my) ? 'x' : 'y';
+    if (lock !== 'x') return;
+    dx = Math.max(-LIMIT, Math.min(LIMIT, mx));
+    fg.style.transform = `translateX(${dx}px)`;
+  }, { passive: true });
+  const end = async cancel => {
+    if (!row) return;
+    const r = row; row = null;
+    fg.style.transition = 'transform .2s';
+    fg.style.transform = '';
+    if (lock !== 'x' || cancel) return;
+    swipedAt = Date.now();
+    if (dx >= TRIGGER) deleteCard(r.dataset.id, `#/decks/${r.dataset.deck}`);
+    else if (dx <= -TRIGGER) navigate(`#/cards/${r.dataset.id}/edit?deck=${r.dataset.deck}&edit=1`);
+  };
+  document.addEventListener('touchend', () => end(false));
+  document.addEventListener('touchcancel', () => end(true));
+  // A swipe must not also count as a tap on the row underneath.
+  document.addEventListener('click', e => {
+    if (Date.now() - swipedAt < 400 && e.target.closest?.('.swipe-row')) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+})();
 document.addEventListener('input', e => { if (e.target.matches?.('textarea[data-grow]')) autoGrow(e.target); });
 const fieldCls = 'w-full bg-surface rounded-[10px] px-4 text-[17px] text-ink placeholder:text-muted/70 focus:outline-none focus:ring-2 focus:ring-accent/40';
 
@@ -924,7 +1004,10 @@ async function renderDeckDetail(app, deckId) {
             const back = previewParts(c.back);
             const thumb = front.imageUrl || back.imageUrl;
             return `
-            <div class="pl-4"><div class="flex items-center min-h-[60px] ${i < cards.length - 1 ? 'border-b border-line' : ''}">
+            <div class="swipe-row relative overflow-hidden" data-id="${c.id}" data-deck="${deckId}">
+            <div class="absolute inset-y-0 left-0 w-24 pl-4 flex items-center bg-rate-again text-white text-[15px] font-semibold" aria-hidden="true">Delete</div>
+            <div class="absolute inset-y-0 right-0 w-24 pr-4 flex items-center justify-end bg-accent text-on-accent text-[15px] font-semibold" aria-hidden="true">Edit</div>
+            <div class="swipe-fg relative bg-surface pl-4" style="touch-action:pan-y"><div class="flex items-center min-h-[60px] ${i < cards.length - 1 ? 'border-b border-line' : ''}">
               <button onclick="navigate('#/cards/${c.id}/edit?deck=${deckId}')" class="flex-1 min-w-0 flex items-center gap-3 py-2 text-left active:opacity-60">
                 ${thumb ? `<img src="${escHtml(thumb)}" alt="" loading="lazy" class="w-10 h-10 rounded-lg object-cover flex-shrink-0">` : ''}
                 <span class="min-w-0"${ct.attr}>
@@ -935,7 +1018,7 @@ async function renderDeckDetail(app, deckId) {
               <button id="fav-btn-${c.id}" data-fav="${c.is_favorite ? '1' : '0'}" onclick="toggleFavoriteInList(${c.id}, 'fav-btn-${c.id}')"
                 aria-label="${c.is_favorite ? 'Remove from favorites' : 'Add to favorites'}"
                 class="w-11 h-11 mr-1 flex-shrink-0 flex items-center justify-center ${c.is_favorite ? 'text-rate-hard' : 'text-muted/50'}">${starSVG(c.is_favorite)}</button>
-            </div></div>`;
+            </div></div></div>`;
           }).join('')}
         </section>`}
     </div>
@@ -1129,7 +1212,7 @@ async function deleteDeck(deckId) {
 async function deleteCard(cardId, backHash) {
   if (!await confirmSheet({ title: 'Delete this card?', message: 'Its review history is deleted too.', confirm: 'Delete Card' })) return;
   await api(`/api/cards/${cardId}`, { method: 'DELETE' });
-  navigate(backHash);
+  if (window.location.hash === backHash) router(); else navigate(backHash); // same hash fires no hashchange
 }
 /* ════════════════════════════════════════
    Screen: Import (CSV / TSV / "front | back")
@@ -1722,7 +1805,7 @@ async function editCurrentCard() {
   params.set('start', c.id);
   commitPendingRate();
   await Promise.all(study.pending || []);
-  navigate(`#/cards/${c.id}/edit?deck=${c.deck_id}&ret=${encodeURIComponent(`${path}?${params}`)}`);
+  navigate(`#/cards/${c.id}/edit?deck=${c.deck_id}&edit=1&ret=${encodeURIComponent(`${path}?${params}`)}`);
 }
 async function leaveStudy(hash) {
   commitPendingRate();
@@ -1777,7 +1860,7 @@ function setupSwipe() {
 /* ════════════════════════════════════════
    Screen: Edit / Add Card
 ════════════════════════════════════════ */
-async function renderEditCard(app, cardId, deckId, ret = null) {
+async function renderEditCard(app, cardId, deckId, ret = null, preview = true) {
   loading(app);
   let card = null;
 
@@ -1821,7 +1904,7 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
       <div id="preview-${key}"${ct.attr} class="edit-preview card-text${key === 'example' ? '' : ct.cls} hidden px-4 py-3 min-h-12 prose-content text-[17px] leading-6 text-ink"></div>
       <div class="flex items-center gap-0.5 px-2 border-t border-line overflow-x-auto" role="toolbar" aria-label="Format ${escHtml(label)}">
         ${formatBar(`edit-${key}`)}
-        <button type="button" id="image-btn-edit-${key}" onclick="pickImageFor('edit-${key}')" class="shrink-0 ml-auto h-11 px-2 text-[15px] text-accent active:opacity-60">Add image</button>
+        <button type="button" id="image-btn-edit-${key}" onclick="pickImageFor('edit-${key}')" class="shrink-0 ml-auto h-11 px-2 text-[15px] text-accent active:opacity-60">Add images</button>
       </div>
     </div>`;
 
@@ -1859,7 +1942,7 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
           <section class="mt-8 bg-surface rounded-[14px] overflow-hidden">
             <button onclick="deleteCard(${Number(cardId)}, ${escHtml(JSON.stringify(deckId ? `#/decks/${deckId}` : '#/'))})" class="w-full h-12 text-[17px] text-rate-again active:bg-base">Delete Card</button>
           </section>` : ''}
-        <input type="file" id="image-picker" accept="image/*" class="hidden" />
+        <input type="file" id="image-picker" accept="image/*" multiple class="hidden" />
       </div>
     </div>
   `;
@@ -1870,25 +1953,25 @@ async function renderEditCard(app, cardId, deckId, ret = null) {
     // After Tailwind's CDN styles the new markup, or the measured height is off.
     requestAnimationFrame(() => autoGrow(ta));
   }
+  if (preview && cardId) setEditorMode(true); // existing cards open to read; Edit tab (or ?edit=1) to change
 
   document.getElementById('image-picker').addEventListener('change', async e => {
-    const file = e.target.files[0];
+    const files = Array.from(e.target.files); // copy first: clearing value empties the live FileList
     e.target.value = '';
-    if (!file || !imageUploadTargetId) return;
+    if (!files.length || !imageUploadTargetId) return;
     const btn = document.getElementById(`image-btn-${imageUploadTargetId}`);
     const originalLabel = btn.textContent;
-    btn.textContent = 'Adding image…';
+    btn.textContent = 'Adding…';
     btn.disabled = true;
-    try {
-      setEditorMode(false);
-      const dataUrl = await compressImageToDataUrl(file);
-      insertAtCursor(document.getElementById(imageUploadTargetId), `\n![](${dataUrl})\n`);
-    } catch {
-      showToast('That image couldn’t be added.');
-    } finally {
-      btn.textContent = originalLabel;
-      btn.disabled = false;
+    setEditorMode(false);
+    const urls = [];
+    for (const f of files) {
+      try { urls.push(await compressImageToDataUrl(f)); } catch { /* counted below */ }
     }
+    if (urls.length) insertAtCursor(document.getElementById(imageUploadTargetId), imageBlock(urls));
+    if (urls.length < files.length) showToast(`${files.length - urls.length} image(s) couldn’t be added.`);
+    btn.textContent = originalLabel;
+    btn.disabled = false;
   });
 }
 
